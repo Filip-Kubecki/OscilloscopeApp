@@ -4,15 +4,46 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Oscilloscope.App.ViewModels"
         xmlns:sp="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
         x:Class="Oscilloscope.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
+        Width="1000" Height="600"
         Title="Oscilloscope">
 
     <Design.DataContext>
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <sp:AvaPlot x:Name="Plot" />
+    <DockPanel>
 
+        <Border DockPanel.Dock="Bottom" Padding="8,4">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding Status}" />
+                <TextBlock Grid.Column="1" Text="{Binding RecordInfo}" />
+            </Grid>
+        </Border>
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="8">
+            <TextBox Text="{Binding Host}" Width="140" />
+            <TextBox Text="{Binding Port}" Width="70" />
+            <Button Content="Connect"
+                    Command="{Binding ConnectCommand}"
+                    IsEnabled="{Binding !IsConnected}" />
+            <Button Content="Disconnect"
+                    Command="{Binding DisconnectCommand}"
+                    IsEnabled="{Binding CanAcquire}" />
+            <Button Content="Single"
+                    Command="{Binding SingleCommand}"
+                    IsEnabled="{Binding CanAcquire}" />
+            <Button Content="Run"
+                    Command="{Binding StartRunCommand}"
+                    IsEnabled="{Binding CanAcquire}" />
+            <Button Content="Stop"
+                    Command="{Binding StopRunCommand}"
+                    IsEnabled="{Binding IsRunning}" />
+        </StackPanel>
+
+        <sp:AvaPlot x:Name="Plot" />
+
+    </DockPanel>
 </Window>

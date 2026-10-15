@@ -3,7 +3,7 @@ using static Oscilloscope.Core.Protocol.ProtocolConstants;
 
 namespace Oscilloscope.Core.Protocol;
 
-/// <summary>Nagłówek bloku danych (64 B), zob. docs/protocol.md, sekcja 5.1.</summary>
+/// <summary>Data block header (64 B), see docs/protocol.md, section 5.1.</summary>
 public readonly record struct RecordHeader(
     byte Flags,
     uint PayloadLength,
@@ -14,17 +14,17 @@ public readonly record struct RecordHeader(
 {
     public bool Overrange => (Flags & 0x01) != 0;
 
-    /// <summary>2 dla maski 03, 1 dla pozostałych.</summary>
+    /// <summary>2 for mask 03, 1 otherwise.</summary>
     public int ChannelCount => ChannelMask == 0x03 ? 2 : 1;
 
     public static RecordHeader Parse(ReadOnlySpan<byte> s)
     {
         if (s.Length < RecordHeaderLength)
-            throw new ProtocolException($"Nagłówek rekordu za krótki: {s.Length} B.");
+            throw new ProtocolException($"Record header too short: {s.Length} B.");
         if (s[0] != Magic0 || s[1] != Magic1)
-            throw new ProtocolException("Zły magic w nagłówku rekordu.");
+            throw new ProtocolException("Bad magic in the record header.");
         if (s[2] != RecordTypeData)
-            throw new ProtocolException($"Nieznany typ bloku: 0x{s[2]:X2}.");
+            throw new ProtocolException($"Unknown block type: 0x{s[2]:X2}.");
 
         var header = new RecordHeader(
             Flags: s[3],
@@ -41,15 +41,15 @@ public readonly record struct RecordHeader(
     private void Validate()
     {
         if (ChannelMask is 0 or > 3)
-            throw new ProtocolException($"Niepoprawna maska kanałów: 0x{ChannelMask:X2}.");
+            throw new ProtocolException($"Invalid channel mask: 0x{ChannelMask:X2}.");
         if (SampleBits != 8)
-            throw new ProtocolException($"Nieobsługiwana liczba bitów na próbkę: {SampleBits}.");
+            throw new ProtocolException($"Unsupported sample width: {SampleBits} bits.");
 
         ulong expected = (ulong)SamplesPerChannel * (ulong)ChannelCount * SampleBits / 8;
         if (expected != PayloadLength)
             throw new ProtocolException(
-                $"PAYLOAD_LEN = {PayloadLength}, a z nagłówka wynika {expected}.");
+                $"PAYLOAD_LEN = {PayloadLength}, but the header fields imply {expected}.");
         if (PayloadLength > MaxPayloadLength)
-            throw new ProtocolException($"PAYLOAD_LEN = {PayloadLength} przekracza limit.");
+            throw new ProtocolException($"PAYLOAD_LEN = {PayloadLength} exceeds the limit.");
     }
 }

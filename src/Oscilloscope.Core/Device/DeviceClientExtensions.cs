@@ -20,12 +20,12 @@ public static class DeviceClientExtensions
             if (state == wanted) return;
             if (sw.Elapsed > timeout)
                 throw new TimeoutException(
-                    $"Stan {wanted} nie nastąpił w {timeout.TotalSeconds:0.#} s (jest {state}).");
+                    $"State {wanted} not reached within {timeout.TotalSeconds:0.#} s (currently {state}).");
             await Task.Delay(10, ct);
         }
     }
 
-    /// <summary>STOP, ARM, FORCE_TRIGGER, czekanie na READY i pobranie rekordu.</summary>
+    /// <summary>STOP, ARM, FORCE_TRIGGER, wait for READY, then read the record.</summary>
     public static async Task<AcquisitionRecord?> AcquireSingleAsync(
         this DeviceClient device, CancellationToken ct = default)
     {

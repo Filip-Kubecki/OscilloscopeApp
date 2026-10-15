@@ -3,7 +3,7 @@ using static Oscilloscope.Core.Protocol.ProtocolConstants;
 
 namespace Oscilloscope.Core.Protocol;
 
-/// <summary>Ramka 8-bajtowa: magic(2) komenda(1) adres(1) dane(4, big-endian).</summary>
+/// <summary>8-byte frame: magic(2) command(1) address(1) data(4, big-endian).</summary>
 public readonly record struct Frame(Command Command, byte Address, uint Data)
 {
     public static Frame Read(byte address) => new(Command.Read, address, 0);
@@ -11,13 +11,13 @@ public readonly record struct Frame(Command Command, byte Address, uint Data)
 
     public bool IsError => Command == Command.ResponseError;
 
-    /// <summary>Kod błędu (najmłodszy bajt danych). Sensowny tylko gdy <see cref="IsError"/>.</summary>
+    /// <summary>Error code (lowest data byte). Meaningful only when <see cref="IsError"/>.</summary>
     public ErrorCode ErrorCode => (ErrorCode)(Data & 0xFF);
 
     public void WriteTo(Span<byte> destination)
     {
         if (destination.Length < FrameLength)
-            throw new ArgumentException("Bufor za krótki na ramkę.", nameof(destination));
+            throw new ArgumentException("Buffer too short for a frame.", nameof(destination));
 
         destination[0] = Magic0;
         destination[1] = Magic1;
@@ -33,7 +33,7 @@ public readonly record struct Frame(Command Command, byte Address, uint Data)
         return bytes;
     }
 
-    /// <summary>False, gdy brak 8 bajtów albo zły magic.</summary>
+    /// <summary>False when there are fewer than 8 bytes or the magic is wrong.</summary>
     public static bool TryParse(ReadOnlySpan<byte> source, out Frame frame)
     {
         frame = default;

@@ -14,7 +14,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private DeviceClient? _device;
     private CancellationTokenSource? _runCts;
 
-    /// <summary>Wywoływane na wątku UI po pobraniu rekordu. Widok rysuje wykres.</summary>
+    /// <summary>Raised on the UI thread after a record is received. The view draws the plot.</summary>
     public event Action<AcquisitionRecord>? RecordReceived;
 
     [ObservableProperty]
@@ -23,30 +23,53 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial int Port { get; set; } = 5000;
 
+
+    [ObservableProperty]
+    public partial string Status { get; set; } = "Not connected.";
+
+    [ObservableProperty]
+    public partial string RecordInfo { get; set; } = "";
+    
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
+    [NotifyPropertyChangedFor(nameof(ConnectButtonText))]
     public partial bool IsConnected { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
+    [NotifyPropertyChangedFor(nameof(CanToggleConnection))]
     public partial bool IsRunning { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
+    [NotifyPropertyChangedFor(nameof(CanToggleConnection))]
     public partial bool IsBusy { get; set; }
-
+    
     [ObservableProperty]
-    public partial string Status { get; set; } = "Niepołączony.";
-
-    [ObservableProperty]
-    public partial string RecordInfo { get; set; } = "";
+    public partial bool IsConnectionLost { get; set; } 
 
     public bool CanAcquire => IsConnected && !IsRunning && !IsBusy;
 
+    public string ConnectButtonText => IsConnected ? "Disconnect" : "Connect";
+
+    /// <summary>Connecting or disconnecting is blocked during an acquisition.</summary>
+    public bool CanToggleConnection => !IsRunning && !IsBusy;
+
+
     [RelayCommand]
+    private async Task ToggleConnectionAsync()
+    {
+        if (IsConnected)
+            await DisconnectAsync();
+        else
+            await ConnectAsync();
+    }
+
     private async Task ConnectAsync()
     {
-        Status = $"Łączenie z {Host}:{Port} ...";
+        IsBusy = true;
+        IsConnectionLost = false; 
+        Status = $"Connecting to {Host}:{Port} ...";
         var device = new DeviceClient();
         try
         {
@@ -56,24 +79,28 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
             _device = device;
             IsConnected = true;
-            Status = $"Połączono. DEVICE_ID = 0x{id:X8}, protokół v{version}.";
+            Status = $"Connected. DEVICE_ID = 0x{id:X8}, protocol v{version}.";
         }
         catch (Exception ex)
         {
             await device.DisposeAsync();
-            Status = $"Błąd połączenia: {ex.Message}";
+            Status = $"Connection error: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
-    [RelayCommand]
     private async Task DisconnectAsync()
     {
         if (_device is not null)
             await _device.DisposeAsync();
         _device = null;
         IsConnected = false;
-        Status = "Rozłączono.";
-    }
+        IsConnectionLost = false; 
+        Status = "Disconnected.";
+    } 
 
     [RelayCommand]
     private async Task SingleAsync()
@@ -101,20 +128,20 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         _runCts = new CancellationTokenSource();
         var token = _runCts.Token;
         IsRunning = true;
-        Status = "Akwizycja ciągła.";
+        Status = "Continuous acquisition.";
         try
         {
             while (!token.IsCancellationRequested)
             {
                 await AcquireOnceAsync();
-                // Ograniczenie tempa odświeżania do ok. 30 klatek/s.
+                // Limit the refresh rate to about 30 frames per second.
                 await Task.Delay(30, token);
             }
-            Status = "Zatrzymano.";
+            Status = "Stopped.";
         }
         catch (OperationCanceledException)
         {
-            Status = "Zatrzymano.";
+            Status = "Stopped.";
         }
         catch (Exception ex)
         {
@@ -131,22 +158,22 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     private async Task AcquireOnceAsync()
     {
-        var device = _device ?? throw new InvalidOperationException("Brak połączenia.");
+        var device = _device ?? throw new InvalidOperationException("Not connected.");
 
-        // Bez tokenu anulowania: przerwanie wymiany w połowie ramki zrywa połączenie
-        // (płytka nie resynchronizuje danych). Stop działa między akwizycjami.
+        // No cancellation token on purpose: aborting an exchange mid-frame drops the
+        // connection (the board does not resynchronize). Stop works between acquisitions.
         var sw = Stopwatch.StartNew();
         var record = await device.AcquireSingleAsync();
         sw.Stop();
 
         if (record is null)
         {
-            Status = "Urządzenie nie ma gotowego rekordu.";
+            Status = "Device has no record ready.";
             return;
         }
 
         var h = record.Header;
-        RecordInfo = $"Rekord #{h.RecordId}, {h.SamplesPerChannel} próbek/kanał, cykl {sw.ElapsedMilliseconds} ms";
+        RecordInfo = $"Record #{h.RecordId}, {h.SamplesPerChannel} samples/channel, cycle {sw.ElapsedMilliseconds} ms";
         RecordReceived?.Invoke(record);
     }
 
@@ -154,17 +181,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         Status = ex switch
         {
-            DeviceErrorException e => $"Błąd urządzenia: {e.Code} (adres 0x{e.Address:X2}).",
+            DeviceErrorException e => $"Device error: {e.Code} (address 0x{e.Address:X2}).",
             TimeoutException => $"Timeout: {ex.Message}",
-            _ => $"Błąd: {ex.Message}",
+            _ => $"Error: {ex.Message}",
         };
 
-        // DeviceClient sam zamyka gniazdo po błędzie transportu lub protokołu.
+        // DeviceClient closes the socket itself after a transport or protocol error.
         if (_device is { IsConnected: false })
         {
             _ = _device.DisposeAsync();
             _device = null;
             IsConnected = false;
+            IsConnectionLost = true;
         }
     }
 

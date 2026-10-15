@@ -14,6 +14,18 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
+    <Window.Styles>
+        <Style Selector="Border.indicator">
+            <Setter Property="Background" Value="#6B6B73" />
+        </Style>
+        <Style Selector="Border.indicator.connected">
+            <Setter Property="Background" Value="#3FB950" />
+        </Style>
+        <Style Selector="Border.indicator.lost">
+            <Setter Property="Background" Value="#F85149" />
+        </Style>
+    </Window.Styles>
+
     <DockPanel>
 
         <Border DockPanel.Dock="Bottom" Padding="8,4">
@@ -24,14 +36,32 @@
         </Border>
 
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="8">
-            <TextBox Text="{Binding Host}" Width="140" />
-            <TextBox Text="{Binding Port}" Width="70" />
-            <Button Content="Connect"
-                    Command="{Binding ConnectCommand}"
-                    IsEnabled="{Binding !IsConnected}" />
-            <Button Content="Disconnect"
-                    Command="{Binding DisconnectCommand}"
-                    IsEnabled="{Binding CanAcquire}" />
+
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <Border Classes="indicator"
+                        Classes.connected="{Binding IsConnected}"
+                        Classes.lost="{Binding IsConnectionLost}"
+                        Width="5" CornerRadius="2" />
+
+                <SplitButton Content="{Binding ConnectButtonText}"
+                             Command="{Binding ToggleConnectionCommand}"
+                             IsEnabled="{Binding CanToggleConnection}"
+                             MinWidth="120">
+                    <SplitButton.Flyout>
+                        <Flyout Placement="BottomEdgeAlignedLeft">
+                            <StackPanel Spacing="8" Width="220">
+                                <TextBlock Text="Host" />
+                                <TextBox Text="{Binding Host}"
+                                         IsEnabled="{Binding !IsConnected}" />
+                                <TextBlock Text="Port" />
+                                <TextBox Text="{Binding Port}"
+                                         IsEnabled="{Binding !IsConnected}" />
+                            </StackPanel>
+                        </Flyout>
+                    </SplitButton.Flyout>
+                </SplitButton>
+            </StackPanel>
+
             <Button Content="Single"
                     Command="{Binding SingleCommand}"
                     IsEnabled="{Binding CanAcquire}" />

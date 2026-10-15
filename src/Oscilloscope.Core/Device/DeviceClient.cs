@@ -5,9 +5,9 @@ using static Oscilloscope.Core.Protocol.ProtocolConstants;
 namespace Oscilloscope.Core.Device;
 
 /// <summary>
-/// Klient protokołu: jedno zapytanie w toku, timeouty po stronie hosta.
-/// Po błędzie protokołu, timeoucie albo zerwaniu połączenia zamyka gniazdo
-/// (zgodnie z docs/protocol.md płytka nie resynchronizuje danych).
+/// Protocol client: one request in flight, timeouts handled on the host side.
+/// After a protocol error, a timeout or a dropped connection it closes the socket
+/// (per docs/protocol.md the board does not resynchronize block data).
 /// </summary>
 public sealed class DeviceClient : IAsyncDisposable
 {
@@ -40,7 +40,7 @@ public sealed class DeviceClient : IAsyncDisposable
         {
             var response = await ExchangeAsync(stream, Frame.Read(address), ct);
             if (response.Command != Command.ResponseRead)
-                throw new ProtocolException($"Oczekiwano odpowiedzi odczytu, jest 0x{(byte)response.Command:X2}.");
+                throw new ProtocolException($"Expected a read response, got 0x{(byte)response.Command:X2}.");
             return response.Data;
         }, ct);
 
@@ -49,15 +49,15 @@ public sealed class DeviceClient : IAsyncDisposable
         {
             var response = await ExchangeAsync(stream, Frame.Write(address, value), ct);
             if (response.Command != Command.ResponseWrite)
-                throw new ProtocolException($"Oczekiwano odpowiedzi zapisu, jest 0x{(byte)response.Command:X2}.");
+                throw new ProtocolException($"Expected a write response, got 0x{(byte)response.Command:X2}.");
             return 0;
         }, ct);
 
-    /// <summary>Wysyła komendę (zapis z danymi 0), np. ARM, STOP, FORCE_TRIGGER.</summary>
+    /// <summary>Sends a command (a write with data 0), e.g. ARM, STOP, FORCE_TRIGGER.</summary>
     public Task SendCommandAsync(byte address, CancellationToken ct = default) =>
         WriteRegisterAsync(address, 0, ct);
 
-    /// <summary>Pobiera ostatni rekord. Null, gdy urządzenie zwróci ERROR_NOT_READY.</summary>
+    /// <summary>Reads the last record. Null when the device returns ERROR_NOT_READY.</summary>
     public Task<AcquisitionRecord?> ReadRecordAsync(CancellationToken ct = default) =>
         ExecuteAsync<AcquisitionRecord?>(async stream =>
         {
@@ -66,14 +66,14 @@ public sealed class DeviceClient : IAsyncDisposable
             var response = await ReadFrameAsync(stream, ct);
 
             if (response.Address != Registers.CommandReadRecord)
-                throw new ProtocolException("Odpowiedź dotyczy innego adresu niż zapytanie.");
+                throw new ProtocolException("The response is for a different address than the request.");
             if (response.IsError)
             {
                 if (response.ErrorCode == ErrorCode.NotReady) return null;
                 throw new DeviceErrorException(response.ErrorCode, response.Address);
             }
             if (response.Command != Command.ResponseWrite)
-                throw new ProtocolException($"Nieoczekiwana odpowiedź 0x{(byte)response.Command:X2}.");
+                throw new ProtocolException($"Unexpected response 0x{(byte)response.Command:X2}.");
 
             var headerBytes = new byte[RecordHeaderLength];
             await ReadExactlyAsync(stream, headerBytes, ct);
@@ -92,7 +92,7 @@ public sealed class DeviceClient : IAsyncDisposable
         var response = await ReadFrameAsync(stream, ct);
 
         if (response.Address != request.Address)
-            throw new ProtocolException("Odpowiedź dotyczy innego adresu niż zapytanie.");
+            throw new ProtocolException("The response is for a different address than the request.");
         if (response.IsError)
             throw new DeviceErrorException(response.ErrorCode, response.Address);
         return response;
@@ -103,7 +103,7 @@ public sealed class DeviceClient : IAsyncDisposable
         var buffer = new byte[FrameLength];
         await ReadExactlyAsync(stream, buffer, ct);
         if (!Frame.TryParse(buffer, out var frame))
-            throw new ProtocolException("Zły magic w odpowiedzi.");
+            throw new ProtocolException("Bad magic in the response.");
         return frame;
     }
 
@@ -123,24 +123,24 @@ public sealed class DeviceClient : IAsyncDisposable
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new TimeoutException($"Brak odpowiedzi w ciągu {Timeout.TotalSeconds:0.#} s.");
+            throw new TimeoutException($"No response within {Timeout.TotalSeconds:0.#} s.");
         }
     }
 
-    /// <summary>Serializuje zapytania i zamyka połączenie po błędzie transportu lub protokołu.</summary>
+    /// <summary>Serializes requests and closes the connection after a transport or protocol error.</summary>
     private async Task<T> ExecuteAsync<T>(Func<NetworkStream, Task<T>> action, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
         try
         {
-            var stream = _stream ?? throw new InvalidOperationException("Brak połączenia.");
+            var stream = _stream ?? throw new InvalidOperationException("Not connected.");
             try
             {
                 return await action(stream);
             }
             catch (DeviceErrorException)
             {
-                throw; // poprawna ramka błędu, połączenie jest w porządku
+                throw; // a valid error frame, the connection is fine
             }
             catch
             {

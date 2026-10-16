@@ -9,10 +9,10 @@ public static class ProtocolConstants
     public const int RecordHeaderLength = 64;
     public const byte RecordTypeData = 0xD0;
 
-    // Zabezpieczenie przed zepsutym nagłówkiem: bez tego błędne PAYLOAD_LEN
-    // kazałoby zaalokować gigabajty. Wartość do dostrojenia, gdy poznamy
-    // maksymalną długość rekordu.
-    public const uint MaxPayloadLength = 16 * 1024 * 1024;
+    public const uint MaxSamplesPerChannel = 8192;
+
+    // Zabezpieczenie przed zepsutym nagłówkiem: maksimum to 2 kanały po 8192 próbki (8 bit).
+    public const uint MaxPayloadLength = 2 * MaxSamplesPerChannel;
 }
 
 public enum Command : byte
@@ -60,4 +60,25 @@ public static class Registers
     public const byte DebugScratch1 = 0xF1;
     public const byte DebugLed = 0xF2;
     public const byte DebugConst = 0xF3;
+    
+    public const byte CommandCommit = 0x10;
+    public const byte CommandClearCounters = 0x15;
+    public const byte CommandResetConfig = 0x16;
+
+    public const byte AcquisitionRecordLength = 0x31;
+    public const byte AcquisitionPretrigger = 0x32;
+    public const byte AcquisitionChannelMask = 0x34;
+
+    public const byte TriggerSource = 0x40;
+    public const byte TriggerEdge = 0x41;
+    public const byte TriggerLevel = 0x42;
+    public const byte TriggerHysteresis = 0x43;
+
+    public const byte CounterFramesOk = 0x90;
+    public const byte CounterBadMagic = 0x91;
+    public const byte CounterUnknownCommand = 0x92;
+    public const byte CounterBadAddress = 0x93;
+
+    public const byte AcquisitionWritePointer = 0xA1;
+    public const byte AcquisitionTriggerPointer = 0xA2; 
 }

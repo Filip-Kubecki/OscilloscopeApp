@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,7 +11,7 @@ namespace Oscilloscope.App.ViewModels;
 public partial class MainViewModel : ViewModelBase, IDisposable
 {
     private DeviceClient? _device;
-    private CancellationTokenSource? _runCts;
+    private CancellationTokenSource? _acquisitionCts;
 
     /// <summary>Raised on the UI thread after a record is received. The view draws the plot.</summary>
     public event Action<AcquisitionRecord>? RecordReceived;
@@ -23,18 +22,12 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial int Port { get; set; } = 5000;
 
-
-    [ObservableProperty]
-    public partial string Status { get; set; } = "Not connected.";
-
-    [ObservableProperty]
-    public partial string RecordInfo { get; set; } = "";
-    
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
     [NotifyPropertyChangedFor(nameof(ConnectButtonText))]
     public partial bool IsConnected { get; set; }
 
+    /// <summary>An acquisition (single or continuous) is in progress.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
     [NotifyPropertyChangedFor(nameof(CanToggleConnection))]
@@ -44,9 +37,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
     [NotifyPropertyChangedFor(nameof(CanToggleConnection))]
     public partial bool IsBusy { get; set; }
-    
+
     [ObservableProperty]
-    public partial bool IsConnectionLost { get; set; } 
+    public partial bool IsConnectionLost { get; set; }
+
+    [ObservableProperty]
+    public partial string Status { get; set; } = "Not connected.";
+
+    [ObservableProperty]
+    public partial string RecordInfo { get; set; } = "";
 
     public bool CanAcquire => IsConnected && !IsRunning && !IsBusy;
 
@@ -54,7 +53,6 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Connecting or disconnecting is blocked during an acquisition.</summary>
     public bool CanToggleConnection => !IsRunning && !IsBusy;
-
 
     [RelayCommand]
     private async Task ToggleConnectionAsync()
@@ -68,7 +66,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private async Task ConnectAsync()
     {
         IsBusy = true;
-        IsConnectionLost = false; 
+        IsConnectionLost = false;
         Status = $"Connecting to {Host}:{Port} ...";
         var device = new DeviceClient();
         try
@@ -98,46 +96,68 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             await _device.DisposeAsync();
         _device = null;
         IsConnected = false;
-        IsConnectionLost = false; 
+        IsConnectionLost = false;
         Status = "Disconnected.";
-    } 
+    }
 
     [RelayCommand]
-    private async Task SingleAsync()
+    private Task SingleAsync() => RunAcquisitionAsync(continuous: false);
+
+    [RelayCommand]
+    private Task StartRunAsync() => RunAcquisitionAsync(continuous: true);
+
+    /// <summary>Stops between exchanges, so the connection is never cut mid-frame.</summary>
+    [RelayCommand]
+    private void StopRun() => _acquisitionCts?.Cancel();
+
+    /// <summary>Forces a trigger while the device is armed and waiting.</summary>
+    [RelayCommand]
+    private async Task ForceTriggerAsync()
     {
-        IsBusy = true;
+        if (_device is null) return;
         try
         {
-            await AcquireOnceAsync();
+            await _device.SendCommandAsync(Registers.CommandForceTrigger);
         }
         catch (Exception ex)
         {
             HandleError(ex);
         }
-        finally
-        {
-            IsBusy = false;
-        }
     }
 
-    [RelayCommand]
-    private async Task StartRunAsync()
+    private async Task RunAcquisitionAsync(bool continuous)
     {
-        if (IsRunning) return;
+        var device = _device;
+        if (device is null || IsRunning) return;
 
-        _runCts = new CancellationTokenSource();
-        var token = _runCts.Token;
+        _acquisitionCts = new CancellationTokenSource();
+        var token = _acquisitionCts.Token;
         IsRunning = true;
-        Status = "Continuous acquisition.";
         try
         {
-            while (!token.IsCancellationRequested)
+            do
             {
-                await AcquireOnceAsync();
+                Status = "Waiting for trigger ...";
+                var record = await device.AcquireTriggeredAsync(token);
+                if (record is null)
+                {
+                    Status = "Stopped.";
+                    return;
+                }
+
+                var h = record.Header;
+                RecordInfo = $"Record #{h.RecordId}, {h.SamplesPerChannel} samples/channel";
+                RecordReceived?.Invoke(record);
+                Status = continuous ? "Continuous acquisition." : "Done.";
+
                 // Limit the refresh rate to about 30 frames per second.
-                await Task.Delay(30, token);
+                if (continuous)
+                    await Task.Delay(30, token);
             }
-            Status = "Stopped.";
+            while (continuous && !token.IsCancellationRequested);
+
+            if (token.IsCancellationRequested)
+                Status = "Stopped.";
         }
         catch (OperationCanceledException)
         {
@@ -150,31 +170,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         finally
         {
             IsRunning = false;
+            _acquisitionCts?.Dispose();
+            _acquisitionCts = null;
         }
-    }
-
-    [RelayCommand]
-    private void StopRun() => _runCts?.Cancel();
-
-    private async Task AcquireOnceAsync()
-    {
-        var device = _device ?? throw new InvalidOperationException("Not connected.");
-
-        // No cancellation token on purpose: aborting an exchange mid-frame drops the
-        // connection (the board does not resynchronize). Stop works between acquisitions.
-        var sw = Stopwatch.StartNew();
-        var record = await device.AcquireSingleAsync();
-        sw.Stop();
-
-        if (record is null)
-        {
-            Status = "Device has no record ready.";
-            return;
-        }
-
-        var h = record.Header;
-        RecordInfo = $"Record #{h.RecordId}, {h.SamplesPerChannel} samples/channel, cycle {sw.ElapsedMilliseconds} ms";
-        RecordReceived?.Invoke(record);
     }
 
     private void HandleError(Exception ex)
@@ -198,7 +196,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
-        _runCts?.Cancel();
+        _acquisitionCts?.Cancel();
         _ = _device?.DisposeAsync();
     }
 }

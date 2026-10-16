@@ -68,6 +68,9 @@
             <Button Content="Run"
                     Command="{Binding StartRunCommand}"
                     IsEnabled="{Binding CanAcquire}" />
+            <Button Content="Force"
+                    Command="{Binding ForceTriggerCommand}"
+                    IsEnabled="{Binding IsRunning}" /> 
             <Button Content="Stop"
                     Command="{Binding StopRunCommand}"
                     IsEnabled="{Binding IsRunning}" />

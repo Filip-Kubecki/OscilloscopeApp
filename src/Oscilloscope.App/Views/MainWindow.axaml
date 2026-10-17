@@ -7,7 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
         x:Class="Oscilloscope.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Width="1000" Height="600"
+        Width="1100" Height="650"
         Title="Oscilloscope">
 
     <Design.DataContext>
@@ -70,11 +70,53 @@
                     IsEnabled="{Binding CanAcquire}" />
             <Button Content="Force"
                     Command="{Binding ForceTriggerCommand}"
-                    IsEnabled="{Binding IsRunning}" /> 
+                    IsEnabled="{Binding IsRunning}" />
             <Button Content="Stop"
                     Command="{Binding StopRunCommand}"
                     IsEnabled="{Binding IsRunning}" />
         </StackPanel>
+
+        <Border DockPanel.Dock="Right" Width="230" Padding="12"
+                BorderThickness="1,0,0,0" BorderBrush="#40808080">
+            <StackPanel Spacing="8" IsEnabled="{Binding CanAcquire}">
+                <TextBlock Text="Trigger" FontWeight="SemiBold" />
+
+                <TextBlock Text="Source" />
+                <ComboBox SelectedIndex="{Binding TriggerSourceIndex}"
+                          HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="Channel 1" />
+                    <ComboBoxItem Content="Channel 2" />
+                </ComboBox>
+
+                <TextBlock Text="Edge" />
+                <ComboBox SelectedIndex="{Binding TriggerEdgeIndex}"
+                          HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="Rising" />
+                    <ComboBoxItem Content="Falling" />
+                    <ComboBoxItem Content="Both" />
+                </ComboBox>
+
+                <TextBlock Text="Level (ADC code)" />
+                <NumericUpDown Value="{Binding TriggerLevel}"
+                               Minimum="0" Maximum="255" Increment="1"
+                               FormatString="0" />
+
+                <TextBlock Text="Hysteresis (ADC code)" />
+                <NumericUpDown Value="{Binding TriggerHysteresis}"
+                               Minimum="0" Maximum="255" Increment="1"
+                               FormatString="0" />
+
+                <TextBlock Text="Pretrigger (samples)" />
+                <NumericUpDown Value="{Binding Pretrigger}"
+                               Minimum="0" Maximum="{Binding MaxPretrigger}"
+                               Increment="16" FormatString="0" />
+
+                <Button Content="Apply"
+                        Command="{Binding ApplyTriggerCommand}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center" />
+            </StackPanel>
+        </Border>
 
         <sp:AvaPlot x:Name="Plot" />
 

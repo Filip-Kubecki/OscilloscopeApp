@@ -16,6 +16,8 @@ switch (mode)
 {
     case "regs": await RunRegisters(); break;
     case "record": await RunRecord(); break;
+    case "config": await RunConfig(); break;
+    case "commit": await RunCommit(); break;
     default: Console.WriteLine("Nieznany tryb. Użyj: regs albo record."); break;
 }
 
@@ -41,6 +43,34 @@ async Task RunRegisters()
     catch (DeviceErrorException ex)
     {
         Console.WriteLine($"OK, błąd: {ex.Code}");
+    }
+}
+
+async Task RunConfig()
+{
+    await Show("RECORD_LENGTH", Registers.AcquisitionRecordLength);
+    await Show("PRETRIGGER", Registers.AcquisitionPretrigger);
+    await Show("CHANNEL_MASK", Registers.AcquisitionChannelMask);
+    await Show("TRIGGER_SOURCE", Registers.TriggerSource);
+    await Show("TRIGGER_EDGE", Registers.TriggerEdge);
+    await Show("TRIGGER_LEVEL", Registers.TriggerLevel);
+    await Show("TRIGGER_HYSTERESIS", Registers.TriggerHysteresis);
+}
+
+async Task RunCommit()
+{
+    Console.WriteLine("Pending config before:");
+    await RunConfig();
+
+    Console.WriteLine("COMMIT ...");
+    try
+    {
+        await device.SendCommandAsync(Registers.CommandCommit);
+        Console.WriteLine("COMMIT OK.");
+    }
+    catch (DeviceErrorException ex)
+    {
+        Console.WriteLine($"COMMIT rejected: {ex.Code}");
     }
 }
 

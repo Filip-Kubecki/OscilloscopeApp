@@ -13,6 +13,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     private DeviceClient? _device;
     private CancellationTokenSource? _acquisitionCts;
 
+    // Settings queued while an acquisition is running (the latest one wins).
+    private readonly object _pendingLock = new();
+    private CaptureConfig? _pendingConfig;
+
+    // Last configuration known to be committed in the device.
+    private CaptureConfig? _lastApplied;
+
+    /// <summary>The device refused a configuration. The message is meant for the status bar.</summary>
+    private sealed class ConfigRejectedException(string message) : Exception(message);
+
     /// <summary>Raised on the UI thread after a record is received. The view draws the plot.</summary>
     public event Action<AcquisitionRecord>? RecordReceived;
 
@@ -24,6 +34,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
+    [NotifyPropertyChangedFor(nameof(CanEditSettings))]
     [NotifyPropertyChangedFor(nameof(ConnectButtonText))]
     public partial bool IsConnected { get; set; }
 
@@ -35,6 +46,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
+    [NotifyPropertyChangedFor(nameof(CanEditSettings))]
     [NotifyPropertyChangedFor(nameof(CanToggleConnection))]
     public partial bool IsBusy { get; set; }
 
@@ -47,7 +59,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial string RecordInfo { get; set; } = "";
 
-    // --- Trigger panel -------------------------------------------------
+    // --- Settings panel ------------------------------------------------
 
     /// <summary>Index into the source list: 0 = channel 1, 1 = channel 2.</summary>
     [ObservableProperty]
@@ -67,28 +79,41 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial decimal Pretrigger { get; set; }
 
-    /// <summary>Record length in samples per channel, as reported by the device.</summary>
+    /// <summary>Record length in samples per channel.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MaxPretrigger))]
-    public partial uint RecordLength { get; set; } = 8192;
+    public partial decimal RecordLength { get; set; } = 8192;
+
+    public decimal MaxRecordLength => ProtocolConstants.MaxSamplesPerChannel;
 
     /// <summary>Largest allowed pretrigger (assumed: record length - 1).</summary>
     public decimal MaxPretrigger => RecordLength > 0 ? RecordLength - 1 : 0;
 
-    /// <summary>Trigger level last sent to or read from the device. The view draws it as a line.</summary>
+    partial void OnRecordLengthChanged(decimal value)
+    {
+        if (Pretrigger > MaxPretrigger)
+            Pretrigger = MaxPretrigger;
+    }
+
+    /// <summary>Trigger level last applied or read from the device. The view draws it as a line.</summary>
     [ObservableProperty]
     public partial int? AppliedTriggerLevel { get; set; }
 
-    /// <summary>Pretrigger last sent to or read from the device. The view draws it as a line.</summary>
+    /// <summary>Pretrigger last applied or read from the device. The view draws it as a line.</summary>
     [ObservableProperty]
     public partial int? AppliedPretrigger { get; set; }
 
     public bool CanAcquire => IsConnected && !IsRunning && !IsBusy;
 
+    /// <summary>Settings can be edited during an acquisition too (they are queued).</summary>
+    public bool CanEditSettings => IsConnected && !IsBusy;
+
     public string ConnectButtonText => IsConnected ? "Disconnect" : "Connect";
 
     /// <summary>Connecting or disconnecting is blocked during an acquisition.</summary>
     public bool CanToggleConnection => !IsRunning && !IsBusy;
+
+    // --- Connection ----------------------------------------------------
 
     [RelayCommand]
     private async Task ToggleConnectionAsync()
@@ -110,11 +135,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             await device.ConnectAsync(Host, Port);
             uint id = await device.ReadRegisterAsync(Registers.DeviceId);
             uint version = await device.ReadRegisterAsync(Registers.ProtocolVersion);
-            uint length = await device.ReadRecordLengthAsync();
             var config = await device.ReadCaptureConfigAsync();
 
             _device = device;
-            RecordLength = length;
+            _lastApplied = config; // assumption: pending == active right after connecting
             ShowConfig(config);
             IsConnected = true;
             Status = $"Connected. DEVICE_ID = 0x{id:X8}, protocol v{version}.";
@@ -135,6 +159,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         if (_device is not null)
             await _device.DisposeAsync();
         _device = null;
+        _lastApplied = null;
+        ClearPending();
         IsConnected = false;
         IsConnectionLost = false;
         AppliedTriggerLevel = null;
@@ -142,17 +168,36 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         Status = "Disconnected.";
     }
 
+    // --- Settings ------------------------------------------------------
+
     private void ShowConfig(CaptureConfig config)
     {
         var t = config.Trigger;
+
+        // The record length goes first: it limits the pretrigger.
+        RecordLength = config.RecordLength;
+        Pretrigger = config.Pretrigger;
         TriggerSourceIndex = (int)t.Source;
         TriggerEdgeIndex = (int)t.Edge;
         TriggerLevel = t.Level;
         TriggerHysteresis = t.Hysteresis;
-        Pretrigger = config.Pretrigger;
 
         AppliedTriggerLevel = t.Level;
         AppliedPretrigger = (int)config.Pretrigger;
+    }
+
+    private CaptureConfig BuildConfig()
+    {
+        uint length = (uint)Math.Clamp(RecordLength, 1m, MaxRecordLength);
+        uint pretrigger = (uint)Math.Clamp(Pretrigger, 0m, (decimal)(length - 1));
+
+        var trigger = new TriggerConfig(
+            (TriggerSource)TriggerSourceIndex,
+            (TriggerEdge)TriggerEdgeIndex,
+            (byte)Math.Clamp(TriggerLevel, 0, 255),
+            (byte)Math.Clamp(TriggerHysteresis, 0, 255));
+
+        return new CaptureConfig(trigger, pretrigger, length);
     }
 
     [RelayCommand]
@@ -161,27 +206,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var device = _device;
         if (device is null) return;
 
+        var config = BuildConfig();
+
+        if (IsRunning)
+        {
+            // Never COMMIT during a capture: the acquisition loop applies it after STOP.
+            lock (_pendingLock)
+                _pendingConfig = config;
+            Status = "Settings queued, the acquisition restarts to apply them ...";
+            return;
+        }
+
         IsBusy = true;
         try
         {
-            var trigger = new TriggerConfig(
-                (TriggerSource)TriggerSourceIndex,
-                (TriggerEdge)TriggerEdgeIndex,
-                (byte)Math.Clamp(TriggerLevel, 0, 255),
-                (byte)Math.Clamp(TriggerHysteresis, 0, 255));
-
-            uint pretrigger = (uint)Math.Clamp(Pretrigger, 0, MaxPretrigger);
-
-            await device.ApplyCaptureConfigAsync(new CaptureConfig(trigger, pretrigger));
-
-            // Show exactly what the device now holds.
-            RecordLength = await device.ReadRecordLengthAsync();
-            ShowConfig(await device.ReadCaptureConfigAsync());
-            Status = "Trigger settings applied.";
-        }
-        catch (DeviceErrorException ex) when (ex.Code == ErrorCode.BadValue)
-        {
-            Status = $"Register 0x{ex.Address:X2} rejected (BAD_VALUE). {await DescribeDeviceAsync(device)}";
+            await device.SendCommandAsync(Registers.CommandStop);
+            await ApplyConfigAsync(device, config);
+            Status = "Settings applied.";
         }
         catch (Exception ex)
         {
@@ -193,22 +234,86 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// Writes the configuration and COMMIT, then shows what the device holds.
+    /// The device must be stopped. On BAD_VALUE it restores the last good settings.
+    /// </summary>
+    private async Task ApplyConfigAsync(DeviceClient device, CaptureConfig config)
+    {
+        try
+        {
+            await device.ApplyCaptureConfigAsync(config);
+        }
+        catch (DeviceErrorException ex) when (ex.Code == ErrorCode.BadValue)
+        {
+            string details = await DescribeDeviceAsync(device);
+            await RestoreLastAppliedAsync(device);
+            throw new ConfigRejectedException(
+                $"Register 0x{ex.Address:X2} rejected (BAD_VALUE), previous settings restored. {details}");
+        }
+
+        var applied = await device.ReadCaptureConfigAsync();
+        _lastApplied = applied;
+        ShowConfig(applied);
+    }
+
+    private async Task RestoreLastAppliedAsync(DeviceClient device)
+    {
+        if (_lastApplied is not { } good) return;
+        try
+        {
+            await device.ApplyCaptureConfigAsync(good);
+        }
+        catch
+        {
+            // Best effort. If the connection is gone, the next exchange reports it.
+        }
+    }
+
     private static async Task<string> DescribeDeviceAsync(DeviceClient device)
     {
         try
         {
             var state = await device.GetStateAsync();
             var c = await device.ReadCaptureConfigAsync();
-            uint length = await device.ReadRecordLengthAsync();
             uint mask = await device.ReadRegisterAsync(Registers.AcquisitionChannelMask);
             var t = c.Trigger;
-            return $"State={state}, src={t.Source}, edge={t.Edge}, level={t.Level}, " +
-                   $"hyst={t.Hysteresis}, len={length}, pre={c.Pretrigger}, mask=0x{mask:X2}.";
+            return $"Rejected values: state={state}, src={t.Source}, edge={t.Edge}, level={t.Level}, " +
+                   $"hyst={t.Hysteresis}, len={c.RecordLength}, pre={c.Pretrigger}, mask=0x{mask:X2}.";
         }
         catch (Exception ex)
         {
             return $"(could not read the device back: {ex.Message})";
         }
+    }
+
+    // Callbacks for the acquisition loop in Core.
+    private bool HasPendingConfig()
+    {
+        lock (_pendingLock)
+            return _pendingConfig is not null;
+    }
+
+    private async Task ApplyPendingConfigAsync()
+    {
+        CaptureConfig? config;
+        lock (_pendingLock)
+        {
+            config = _pendingConfig;
+            _pendingConfig = null;
+        }
+
+        var device = _device;
+        if (device is null || config is null) return;
+
+        await ApplyConfigAsync(device, config.Value);
+        Status = "Settings applied. Waiting for trigger ...";
+    }
+
+    private void ClearPending()
+    {
+        lock (_pendingLock)
+            _pendingConfig = null;
     }
 
     // --- Acquisition ---------------------------------------------------
@@ -251,7 +356,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             do
             {
                 Status = "Waiting for trigger ...";
-                var record = await device.AcquireTriggeredAsync(token);
+                var record = await device.AcquireTriggeredAsync(
+                    token, HasPendingConfig, ApplyPendingConfigAsync);
                 if (record is null)
                 {
                     Status = "Stopped.";
@@ -292,6 +398,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         Status = ex switch
         {
+            ConfigRejectedException => ex.Message,
             DeviceErrorException { Code: ErrorCode.BadValue } e =>
                 $"Device rejected the value for register 0x{e.Address:X2} (BAD_VALUE).",
             DeviceErrorException e => $"Device error: {e.Code} (address 0x{e.Address:X2}).",

@@ -7,7 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
         x:Class="Oscilloscope.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Width="1100" Height="650"
+        Width="1100" Height="700"
         Title="Oscilloscope">
 
     <Design.DataContext>
@@ -30,8 +30,8 @@
 
         <Border DockPanel.Dock="Bottom" Padding="8,4">
             <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Text="{Binding Status}" />
-                <TextBlock Grid.Column="1" Text="{Binding RecordInfo}" />
+                <TextBlock Grid.Column="0" Text="{Binding Status}" TextWrapping="Wrap" />
+                <TextBlock Grid.Column="1" Text="{Binding RecordInfo}" Margin="12,0,0,0" />
             </Grid>
         </Border>
 
@@ -76,46 +76,57 @@
                     IsEnabled="{Binding IsRunning}" />
         </StackPanel>
 
-        <Border DockPanel.Dock="Right" Width="230" Padding="12"
+        <Border DockPanel.Dock="Right" Width="240"
                 BorderThickness="1,0,0,0" BorderBrush="#40808080">
-            <StackPanel Spacing="8" IsEnabled="{Binding CanAcquire}">
-                <TextBlock Text="Trigger" FontWeight="SemiBold" />
+            <ScrollViewer>
+                <StackPanel Spacing="8" Margin="12" IsEnabled="{Binding CanEditSettings}">
 
-                <TextBlock Text="Source" />
-                <ComboBox SelectedIndex="{Binding TriggerSourceIndex}"
-                          HorizontalAlignment="Stretch">
-                    <ComboBoxItem Content="Channel 1" />
-                    <ComboBoxItem Content="Channel 2" />
-                </ComboBox>
+                    <TextBlock Text="Trigger" FontWeight="SemiBold" />
 
-                <TextBlock Text="Edge" />
-                <ComboBox SelectedIndex="{Binding TriggerEdgeIndex}"
-                          HorizontalAlignment="Stretch">
-                    <ComboBoxItem Content="Rising" />
-                    <ComboBoxItem Content="Falling" />
-                    <ComboBoxItem Content="Both" />
-                </ComboBox>
+                    <TextBlock Text="Source" />
+                    <ComboBox SelectedIndex="{Binding TriggerSourceIndex}"
+                              HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Channel 1" />
+                        <ComboBoxItem Content="Channel 2" />
+                    </ComboBox>
 
-                <TextBlock Text="Level (ADC code)" />
-                <NumericUpDown Value="{Binding TriggerLevel}"
-                               Minimum="0" Maximum="255" Increment="1"
-                               FormatString="0" />
+                    <TextBlock Text="Edge" />
+                    <ComboBox SelectedIndex="{Binding TriggerEdgeIndex}"
+                              HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Rising" />
+                        <ComboBoxItem Content="Falling" />
+                        <ComboBoxItem Content="Both" />
+                    </ComboBox>
 
-                <TextBlock Text="Hysteresis (ADC code)" />
-                <NumericUpDown Value="{Binding TriggerHysteresis}"
-                               Minimum="0" Maximum="255" Increment="1"
-                               FormatString="0" />
+                    <TextBlock Text="Level (ADC code)" />
+                    <NumericUpDown Value="{Binding TriggerLevel}"
+                                   Minimum="0" Maximum="255" Increment="1"
+                                   FormatString="0" />
 
-                <TextBlock Text="Pretrigger (samples)" />
-                <NumericUpDown Value="{Binding Pretrigger}"
-                               Minimum="0" Maximum="{Binding MaxPretrigger}"
-                               Increment="16" FormatString="0" />
+                    <TextBlock Text="Hysteresis (ADC code)" />
+                    <NumericUpDown Value="{Binding TriggerHysteresis}"
+                                   Minimum="0" Maximum="255" Increment="1"
+                                   FormatString="0" />
 
-                <Button Content="Apply"
-                        Command="{Binding ApplyTriggerCommand}"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Center" />
-            </StackPanel>
+                    <TextBlock Text="Acquisition" FontWeight="SemiBold" Margin="0,8,0,0" />
+
+                    <TextBlock Text="Record length (samples)" />
+                    <NumericUpDown Value="{Binding RecordLength}"
+                                   Minimum="1" Maximum="{Binding MaxRecordLength}"
+                                   Increment="1024" FormatString="0" />
+
+                    <TextBlock Text="Pretrigger (samples)" />
+                    <NumericUpDown Value="{Binding Pretrigger}"
+                                   Minimum="0" Maximum="{Binding MaxPretrigger}"
+                                   Increment="256" FormatString="0" />
+
+                    <Button Content="Apply"
+                            Command="{Binding ApplyTriggerCommand}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Margin="0,8,0,0" />
+                </StackPanel>
+            </ScrollViewer>
         </Border>
 
         <sp:AvaPlot x:Name="Plot" />

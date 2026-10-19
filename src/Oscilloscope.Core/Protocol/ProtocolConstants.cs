@@ -9,7 +9,7 @@ public static class ProtocolConstants
     public const int RecordHeaderLength = 64;
     public const byte RecordTypeData = 0xD0;
 
-    public const uint MaxSamplesPerChannel = 8192;
+    public const uint MaxSamplesPerChannel = 65536;
 
     // Zabezpieczenie przed zepsutym nagłówkiem: maksimum to 2 kanały po 8192 próbki (8 bit).
     public const uint MaxPayloadLength = 2 * MaxSamplesPerChannel;

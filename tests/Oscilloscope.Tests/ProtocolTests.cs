@@ -129,4 +129,11 @@ public class RecordTests
         Assert.Equal(new byte[] { 5, 6, 7 }, record.ExtractChannel(1));
         Assert.Throws<InvalidOperationException>(() => record.ExtractChannel(2));
     }
+    
+    [Fact]
+    public void Accepts_maximum_record_with_two_channels()
+    {
+        var header = RecordHeader.Parse(MakeHeader(mask: 0x03, samples: 65536));
+        Assert.Equal(131072u, header.PayloadLength);
+    } 
 }

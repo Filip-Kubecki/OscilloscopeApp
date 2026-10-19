@@ -22,8 +22,11 @@ public readonly record struct TriggerConfig(
     byte Level,
     byte Hysteresis);
 
-/// <summary>Trigger settings plus the number of samples kept from before the trigger (per channel).</summary>
-public readonly record struct CaptureConfig(TriggerConfig Trigger, uint Pretrigger);
+/// <summary>Everything the application configures: trigger, pretrigger and record length (samples per channel).</summary>
+public readonly record struct CaptureConfig(
+    TriggerConfig Trigger,
+    uint Pretrigger,
+    uint RecordLength);
 
 public static class TriggerExtensions
 {
@@ -49,13 +52,14 @@ public static class TriggerExtensions
         return new TriggerConfig((TriggerSource)source, (TriggerEdge)edge, (byte)level, (byte)hysteresis);
     }
 
-    /// <summary>Reads the pending trigger registers and the pending pretrigger.</summary>
+    /// <summary>Reads the pending trigger, pretrigger and record length.</summary>
     public static async Task<CaptureConfig> ReadCaptureConfigAsync(
         this DeviceClient device, CancellationToken ct = default)
     {
         var trigger = await device.ReadTriggerConfigAsync(ct);
         uint pretrigger = await device.ReadRegisterAsync(Registers.AcquisitionPretrigger, ct);
-        return new CaptureConfig(trigger, pretrigger);
+        uint length = await device.ReadRegisterAsync(Registers.AcquisitionRecordLength, ct);
+        return new CaptureConfig(trigger, pretrigger, length);
     }
 
     /// <summary>Pending record length in samples per channel.</summary>
@@ -71,10 +75,14 @@ public static class TriggerExtensions
         await device.SendCommandAsync(Registers.CommandCommit, ct);
     }
 
-    /// <summary>Writes the pretrigger and the trigger registers, then one COMMIT.</summary>
+    /// <summary>
+    /// Writes record length, pretrigger and the trigger registers, then one COMMIT.
+    /// Call it only while the acquisition is stopped.
+    /// </summary>
     public static async Task ApplyCaptureConfigAsync(
         this DeviceClient device, CaptureConfig config, CancellationToken ct = default)
     {
+        await device.WriteRegisterAsync(Registers.AcquisitionRecordLength, config.RecordLength, ct);
         await device.WriteRegisterAsync(Registers.AcquisitionPretrigger, config.Pretrigger, ct);
         await WriteTriggerRegistersAsync(device, config.Trigger, ct);
         await device.SendCommandAsync(Registers.CommandCommit, ct);

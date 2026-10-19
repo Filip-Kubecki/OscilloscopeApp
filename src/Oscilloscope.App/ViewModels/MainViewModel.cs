@@ -82,7 +82,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Record length in samples per channel.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MaxPretrigger))]
-    public partial decimal RecordLength { get; set; } = 8192;
+    public partial decimal RecordLength { get; set; } = 65536;
 
     public decimal MaxRecordLength => ProtocolConstants.MaxSamplesPerChannel;
 
@@ -248,6 +248,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             string details = await DescribeDeviceAsync(device);
             await RestoreLastAppliedAsync(device);
+
+            // Make the view redraw the markers from the values that really apply.
+            OnPropertyChanged(nameof(AppliedTriggerLevel));
+            OnPropertyChanged(nameof(AppliedPretrigger));
+
             throw new ConfigRejectedException(
                 $"Register 0x{ex.Address:X2} rejected (BAD_VALUE), previous settings restored. {details}");
         }

@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Oscilloscope.App.ViewModels"
+        x:Class="Oscilloscope.App.Views.DebugWindow"
+        x:DataType="vm:DebugViewModel"
+        RequestedThemeVariant="Dark"
+        Width="440" Height="640"
+        Title="Debug">
+
+    <Window.Resources>
+        <DataTemplate x:Key="RowTemplate" x:DataType="vm:DebugRow">
+            <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                <TextBlock Text="{Binding Name}" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Value}"
+                           FontFamily="Consolas, Menlo, DejaVu Sans Mono, monospace" />
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <ScrollViewer>
+        <StackPanel Margin="16" Spacing="6">
+
+            <TextBlock Text="{Binding PollStatus}" Opacity="0.6" />
+
+            <TextBlock Text="Device" FontWeight="SemiBold" Margin="0,8,0,0" />
+            <ItemsControl ItemsSource="{Binding InfoRows}"
+                          ItemTemplate="{StaticResource RowTemplate}" />
+
+            <TextBlock Text="Acquisition" FontWeight="SemiBold" Margin="0,8,0,0" />
+            <ItemsControl ItemsSource="{Binding StatusRows}"
+                          ItemTemplate="{StaticResource RowTemplate}" />
+
+            <TextBlock Text="Counters" FontWeight="SemiBold" Margin="0,8,0,0" />
+            <ItemsControl ItemsSource="{Binding CounterRows}"
+                          ItemTemplate="{StaticResource RowTemplate}" />
+            <Button Content="Clear counters"
+                    Command="{Binding ClearCountersCommand}" />
+
+            <TextBlock Text="Register console (hex)" FontWeight="SemiBold" Margin="0,16,0,0" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Addr" VerticalAlignment="Center" />
+                <TextBox Text="{Binding ConsoleAddress}" Width="70" />
+                <TextBlock Text="Value" VerticalAlignment="Center" />
+                <TextBox Text="{Binding ConsoleValue}" Width="130" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Read" Command="{Binding ReadRegisterCommand}" />
+                <Button Content="Write" Command="{Binding WriteRegisterCommand}" />
+            </StackPanel>
+            <TextBlock Text="{Binding ConsoleResult}" TextWrapping="Wrap" />
+
+        </StackPanel>
+    </ScrollViewer>
+</Window>

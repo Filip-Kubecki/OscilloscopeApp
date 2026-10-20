@@ -20,17 +20,48 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     // Last configuration known to be committed in the device.
     private CaptureConfig? _lastApplied;
 
+    // True while the channel checkboxes are set from the device (no "last channel" check then).
+    private bool _updatingChannels;
+
     /// <summary>The device refused a configuration. The message is meant for the status bar.</summary>
     private sealed class ConfigRejectedException(string message) : Exception(message);
 
     /// <summary>Raised on the UI thread after a record is received. The view draws the plot.</summary>
     public event Action<AcquisitionRecord>? RecordReceived;
 
+    public ChannelViewModel Channel1 { get; }
+    public ChannelViewModel Channel2 { get; }
+
+    /// <summary>The connected client, or null. Used by the debug window.</summary>
+    public DeviceClient? Device => _device;
+
+    public MainViewModel()
+    {
+        Channel1 = new ChannelViewModel(1, enabled: true, OnChannelToggled);
+        Channel2 = new ChannelViewModel(2, enabled: false, OnChannelToggled);
+    }
+
+    private void OnChannelToggled(ChannelViewModel changed)
+    {
+        if (_updatingChannels)
+            return;
+
+        // At least one channel must stay enabled (mask 0 is invalid in the device).
+        if (!Channel1.IsEnabled && !Channel2.IsEnabled)
+        {
+            changed.IsEnabled = true;
+            Status = "At least one channel must stay enabled.";
+        }
+    }
+
     [ObservableProperty]
     public partial string Host { get; set; } = "192.168.1.50";
 
     [ObservableProperty]
     public partial int Port { get; set; } = 5000;
+
+    [ObservableProperty]
+    public partial bool IsPanelOpen { get; set; } = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
@@ -141,6 +172,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _lastApplied = config; // assumption: pending == active right after connecting
             ShowConfig(config);
             IsConnected = true;
+            OnPropertyChanged(nameof(Device));
             Status = $"Connected. DEVICE_ID = 0x{id:X8}, protocol v{version}.";
         }
         catch (Exception ex)
@@ -174,6 +206,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         var t = config.Trigger;
 
+        _updatingChannels = true;
+        Channel1.IsEnabled = (config.ChannelMask & 0x01) != 0;
+        Channel2.IsEnabled = (config.ChannelMask & 0x02) != 0;
+        _updatingChannels = false;
+
         // The record length goes first: it limits the pretrigger.
         RecordLength = config.RecordLength;
         Pretrigger = config.Pretrigger;
@@ -186,10 +223,20 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         AppliedPretrigger = (int)config.Pretrigger;
     }
 
-    private CaptureConfig BuildConfig()
+    private bool TryBuildConfig(out CaptureConfig config)
     {
+        config = default;
+
+        bool sourceEnabled = TriggerSourceIndex == 0 ? Channel1.IsEnabled : Channel2.IsEnabled;
+        if (!sourceEnabled)
+        {
+            Status = "The trigger source channel is disabled. Enable it or pick another source.";
+            return false;
+        }
+
         uint length = (uint)Math.Clamp(RecordLength, 1m, MaxRecordLength);
         uint pretrigger = (uint)Math.Clamp(Pretrigger, 0m, (decimal)(length - 1));
+        uint mask = (Channel1.IsEnabled ? 0x01u : 0u) | (Channel2.IsEnabled ? 0x02u : 0u);
 
         var trigger = new TriggerConfig(
             (TriggerSource)TriggerSourceIndex,
@@ -197,7 +244,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             (byte)Math.Clamp(TriggerLevel, 0, 255),
             (byte)Math.Clamp(TriggerHysteresis, 0, 255));
 
-        return new CaptureConfig(trigger, pretrigger, length);
+        config = new CaptureConfig(trigger, pretrigger, length, mask);
+        return true;
     }
 
     [RelayCommand]
@@ -206,7 +254,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var device = _device;
         if (device is null) return;
 
-        var config = BuildConfig();
+        if (!TryBuildConfig(out var config))
+            return;
 
         if (IsRunning)
         {
@@ -281,10 +330,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             var state = await device.GetStateAsync();
             var c = await device.ReadCaptureConfigAsync();
-            uint mask = await device.ReadRegisterAsync(Registers.AcquisitionChannelMask);
             var t = c.Trigger;
             return $"Rejected values: state={state}, src={t.Source}, edge={t.Edge}, level={t.Level}, " +
-                   $"hyst={t.Hysteresis}, len={c.RecordLength}, pre={c.Pretrigger}, mask=0x{mask:X2}.";
+                   $"hyst={t.Hysteresis}, len={c.RecordLength}, pre={c.Pretrigger}, mask=0x{c.ChannelMask:X2}.";
         }
         catch (Exception ex)
         {

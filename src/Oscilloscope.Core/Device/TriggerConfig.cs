@@ -22,11 +22,15 @@ public readonly record struct TriggerConfig(
     byte Level,
     byte Hysteresis);
 
-/// <summary>Everything the application configures: trigger, pretrigger and record length (samples per channel).</summary>
+/// <summary>
+/// Everything the application configures: trigger, pretrigger, record length
+/// (samples per channel) and the channel mask (bit 0 = channel 1, bit 1 = channel 2).
+/// </summary>
 public readonly record struct CaptureConfig(
     TriggerConfig Trigger,
     uint Pretrigger,
-    uint RecordLength);
+    uint RecordLength,
+    uint ChannelMask);
 
 public static class TriggerExtensions
 {
@@ -52,14 +56,19 @@ public static class TriggerExtensions
         return new TriggerConfig((TriggerSource)source, (TriggerEdge)edge, (byte)level, (byte)hysteresis);
     }
 
-    /// <summary>Reads the pending trigger, pretrigger and record length.</summary>
+    /// <summary>Reads the pending trigger, pretrigger, record length and channel mask.</summary>
     public static async Task<CaptureConfig> ReadCaptureConfigAsync(
         this DeviceClient device, CancellationToken ct = default)
     {
         var trigger = await device.ReadTriggerConfigAsync(ct);
         uint pretrigger = await device.ReadRegisterAsync(Registers.AcquisitionPretrigger, ct);
         uint length = await device.ReadRegisterAsync(Registers.AcquisitionRecordLength, ct);
-        return new CaptureConfig(trigger, pretrigger, length);
+        uint mask = await device.ReadRegisterAsync(Registers.AcquisitionChannelMask, ct);
+
+        if (mask is 0 or > 3)
+            throw new ProtocolException($"Unexpected ACQUISITION_CHANNEL_MASK value: 0x{mask:X}.");
+
+        return new CaptureConfig(trigger, pretrigger, length, mask);
     }
 
     /// <summary>Pending record length in samples per channel.</summary>
@@ -76,12 +85,13 @@ public static class TriggerExtensions
     }
 
     /// <summary>
-    /// Writes record length, pretrigger and the trigger registers, then one COMMIT.
+    /// Writes channel mask, record length, pretrigger and the trigger registers, then one COMMIT.
     /// Call it only while the acquisition is stopped.
     /// </summary>
     public static async Task ApplyCaptureConfigAsync(
         this DeviceClient device, CaptureConfig config, CancellationToken ct = default)
     {
+        await device.WriteRegisterAsync(Registers.AcquisitionChannelMask, config.ChannelMask, ct);
         await device.WriteRegisterAsync(Registers.AcquisitionRecordLength, config.RecordLength, ct);
         await device.WriteRegisterAsync(Registers.AcquisitionPretrigger, config.Pretrigger, ct);
         await WriteTriggerRegistersAsync(device, config.Trigger, ct);

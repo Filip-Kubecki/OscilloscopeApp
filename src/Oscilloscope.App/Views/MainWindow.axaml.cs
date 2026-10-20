@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private static readonly Cursor PretriggerCursor = new(StandardCursorType.SizeWestEast);
 
     private enum DragTarget { None, TriggerLevel, Pretrigger }
+    private DebugWindow? _debugWindow;
 
     private MainViewModel? _viewModel;
     private uint _lastSamples;
@@ -37,6 +38,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         ApplyDarkTheme();
+        
         ApplyLimits(sampleCount: 0);
         Plot.Refresh();
 
@@ -59,6 +61,27 @@ public partial class MainWindow : Window
         plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#2E2E36");
     }
 
+    private void OnDebugClick(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+            return;
+
+        if (_debugWindow is not null)
+        {
+            _debugWindow.Activate();
+            return;
+        }
+
+        var debugViewModel = new DebugViewModel(() => _viewModel?.Device);
+        _debugWindow = new DebugWindow { DataContext = debugViewModel };
+        _debugWindow.Closed += (_, _) =>
+        {
+            debugViewModel.Dispose();
+            _debugWindow = null;
+        };
+        _debugWindow.Show(this);
+    } 
+    
     /// <summary>
     /// Sets the view to the whole record and restricts zoom and pan to the sample range
     /// (X: 0..N-1, Y: 0..255). Called only when the record length changes,

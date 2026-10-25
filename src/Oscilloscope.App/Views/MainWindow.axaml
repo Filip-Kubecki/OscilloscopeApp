@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Oscilloscope.App.ViewModels"
+        xmlns:views="using:Oscilloscope.App.Views"
         xmlns:sp="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
         x:Class="Oscilloscope.App.Views.MainWindow"
@@ -27,30 +28,6 @@
         </Style>
     </Window.Styles>
 
-    <Window.Resources>
-        <!-- One channel tab. Only "Enabled" works for now, the rest are placeholders. -->
-        <DataTemplate x:Key="ChannelTemplate" x:DataType="vm:ChannelViewModel">
-            <StackPanel Spacing="8" Margin="0,8,0,0">
-                <CheckBox Content="Enabled" IsChecked="{Binding IsEnabled}" />
-
-                <TextBlock Text="Gain" />
-                <NumericUpDown IsEnabled="False"
-                               ToolTip.Tip="Available when the firmware supports it"
-                               ToolTip.ShowOnDisabled="True" />
-
-                <TextBlock Text="Offset" />
-                <NumericUpDown IsEnabled="False"
-                               ToolTip.Tip="Available when the firmware supports it"
-                               ToolTip.ShowOnDisabled="True" />
-
-                <TextBlock Text="Status" FontWeight="SemiBold" Margin="0,8,0,0" />
-                <TextBlock Text="Applied gain: -" Opacity="0.5" />
-                <TextBlock Text="Applied offset: -" Opacity="0.5" />
-                <TextBlock Text="Overrange: -" Opacity="0.5" />
-            </StackPanel>
-        </DataTemplate>
-    </Window.Resources>
-
     <DockPanel>
 
         <Border DockPanel.Dock="Bottom" Padding="8,4">
@@ -60,66 +37,72 @@
             </Grid>
         </Border>
 
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="8">
+        <!-- Top bar: the panel toggle sits on the right edge -->
+        <DockPanel DockPanel.Dock="Top" Margin="8">
 
-            <StackPanel Orientation="Horizontal" Spacing="6">
-                <Border Classes="indicator"
-                        Classes.connected="{Binding IsConnected}"
-                        Classes.lost="{Binding IsConnectionLost}"
-                        Width="5" CornerRadius="2" />
+            <ToggleButton DockPanel.Dock="Right"
+                          IsChecked="{Binding IsPanelOpen, Mode=TwoWay}"
+                          ToolTip.Tip="Settings panel"
+                          Padding="10,8"
+                          VerticalAlignment="Center">
+                <PathIcon Data="M3,5H21V7H3Z M3,11H21V13H3Z M3,17H21V19H3Z"
+                          Width="16" Height="16" />
+            </ToggleButton>
 
-                <SplitButton Content="{Binding ConnectButtonText}"
-                             Command="{Binding ToggleConnectionCommand}"
-                             IsEnabled="{Binding CanToggleConnection}"
-                             MinWidth="120">
-                    <SplitButton.Flyout>
-                        <Flyout Placement="BottomEdgeAlignedLeft">
-                            <StackPanel Spacing="8" Width="220">
-                                <TextBlock Text="Host" />
-                                <TextBox Text="{Binding Host}"
-                                         IsEnabled="{Binding !IsConnected}" />
-                                <TextBlock Text="Port" />
-                                <TextBox Text="{Binding Port}"
-                                         IsEnabled="{Binding !IsConnected}" />
-                            </StackPanel>
-                        </Flyout>
-                    </SplitButton.Flyout>
-                </SplitButton>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Classes="indicator"
+                            Classes.connected="{Binding IsConnected}"
+                            Classes.lost="{Binding IsConnectionLost}"
+                            Width="5" CornerRadius="2" />
+
+                    <SplitButton Content="{Binding ConnectButtonText}"
+                                 Command="{Binding ToggleConnectionCommand}"
+                                 IsEnabled="{Binding CanToggleConnection}"
+                                 MinWidth="120">
+                        <SplitButton.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                <StackPanel Spacing="8" Width="220">
+                                    <TextBlock Text="Host" />
+                                    <TextBox Text="{Binding Host}"
+                                             IsEnabled="{Binding !IsConnected}" />
+                                    <TextBlock Text="Port" />
+                                    <TextBox Text="{Binding Port}"
+                                             IsEnabled="{Binding !IsConnected}" />
+                                </StackPanel>
+                            </Flyout>
+                        </SplitButton.Flyout>
+                    </SplitButton>
+                </StackPanel>
+
+                <Button Content="Single"
+                        Command="{Binding SingleCommand}"
+                        IsEnabled="{Binding CanAcquire}" />
+                <Button Content="Run"
+                        Command="{Binding StartRunCommand}"
+                        IsEnabled="{Binding CanAcquire}" />
+                <Button Content="Force"
+                        Command="{Binding ForceTriggerCommand}"
+                        IsEnabled="{Binding IsRunning}" />
+                <Button Content="Stop"
+                        Command="{Binding StopRunCommand}"
+                        IsEnabled="{Binding IsRunning}" />
+                <Button Content="Debug"
+                        Click="OnDebugClick"
+                        IsEnabled="{Binding IsConnected}" />
             </StackPanel>
-
-            <Button Content="Single"
-                    Command="{Binding SingleCommand}"
-                    IsEnabled="{Binding CanAcquire}" />
-            <Button Content="Run"
-                    Command="{Binding StartRunCommand}"
-                    IsEnabled="{Binding CanAcquire}" />
-            <Button Content="Force"
-                    Command="{Binding ForceTriggerCommand}"
-                    IsEnabled="{Binding IsRunning}" />
-            <Button Content="Stop"
-                    Command="{Binding StopRunCommand}"
-                    IsEnabled="{Binding IsRunning}" />
-            <Button Content="Debug"
-                    Click="OnDebugClick"
-                    IsEnabled="{Binding IsConnected}" />
-        </StackPanel>
+        </DockPanel>
 
         <Grid>
             <sp:AvaPlot x:Name="Plot" />
 
-            <!-- Gear in the corner: opens and closes the side panel. -->
-            <ToggleButton Content="⚙"
-                          FontSize="18"
-                          IsChecked="{Binding IsPanelOpen, Mode=TwoWay}"
-                          HorizontalAlignment="Right"
-                          VerticalAlignment="Top"
-                          Margin="8" />
-
-            <!-- Side panel, floating over the plot. -->
+            <!-- Side panel, floating over the plot: Trigger, CH1 and CH2 blocks -->
             <Border IsVisible="{Binding IsPanelOpen}"
-                    Width="280"
+                    Width="290"
                     HorizontalAlignment="Right"
-                    Margin="0,56,8,8"
+                    VerticalAlignment="Top"
+                    Margin="0,8,8,8"
                     Padding="8"
                     Background="#F01E1E24"
                     BorderBrush="#40808080"
@@ -135,90 +118,109 @@
                             HorizontalContentAlignment="Center"
                             Margin="0,8,0,0" />
 
-                    <TabControl>
+                    <ScrollViewer>
+                        <StackPanel Spacing="8">
 
-                        <TabItem Header="Trigger">
-                            <ScrollViewer>
-                                <StackPanel Spacing="8" Margin="0,8,8,0"
-                                            IsEnabled="{Binding CanEditSettings}">
+                            <!-- Trigger block -->
+                            <Grid>
+                                <Border Background="#24242B" BorderBrush="#40808080"
+                                        BorderThickness="1" CornerRadius="6" />
+                                <Border Background="#E5484D" Opacity="0.12" CornerRadius="6"
+                                        IsVisible="{Binding IsTriggerSelected}"
+                                        IsHitTestVisible="False" />
+                                <Border BorderBrush="#E5484D" BorderThickness="2" CornerRadius="6"
+                                        IsVisible="{Binding IsTriggerSelected}"
+                                        IsHitTestVisible="False" />
 
-                                    <TextBlock Text="Source" />
-                                    <ComboBox SelectedIndex="{Binding TriggerSourceIndex}"
-                                              HorizontalAlignment="Stretch">
-                                        <ComboBoxItem Content="Channel 1" />
-                                        <ComboBoxItem Content="Channel 2" />
-                                    </ComboBox>
+                                <StackPanel>
+                                    <Border Background="Transparent" Cursor="Hand" Padding="10,8"
+                                            Tapped="OnTriggerHeaderTapped">
+                                        <Grid ColumnDefinitions="Auto,*">
+                                            <Border Width="4" Height="28" CornerRadius="2"
+                                                    Background="#E5484D"
+                                                    VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="Trigger" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding TriggerSummary}"
+                                                           FontSize="12" Opacity="0.6" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
 
-                                    <TextBlock Text="Edge" />
-                                    <ComboBox SelectedIndex="{Binding TriggerEdgeIndex}"
-                                              HorizontalAlignment="Stretch">
-                                        <ComboBoxItem Content="Rising" />
-                                        <ComboBoxItem Content="Falling" />
-                                        <ComboBoxItem Content="Both" />
-                                    </ComboBox>
+                                    <StackPanel IsVisible="{Binding IsTriggerSelected}"
+                                                IsEnabled="{Binding CanEditSettings}"
+                                                Spacing="8" Margin="10,0,10,10">
 
-                                    <TextBlock Text="Level (ADC code)" />
-                                    <NumericUpDown Value="{Binding TriggerLevel}"
-                                                   Minimum="0" Maximum="255" Increment="1"
-                                                   FormatString="0" />
+                                        <TextBlock Text="Source" />
+                                        <ComboBox SelectedIndex="{Binding TriggerSourceIndex}"
+                                                  HorizontalAlignment="Stretch">
+                                            <ComboBoxItem Content="Channel 1" />
+                                            <ComboBoxItem Content="Channel 2" />
+                                        </ComboBox>
 
-                                    <TextBlock Text="Acquisition" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                        <TextBlock Text="Edge" />
+                                        <ComboBox SelectedIndex="{Binding TriggerEdgeIndex}"
+                                                  HorizontalAlignment="Stretch">
+                                            <ComboBoxItem Content="Rising" />
+                                            <ComboBoxItem Content="Falling" />
+                                            <ComboBoxItem Content="Both" />
+                                        </ComboBox>
 
-                                    <TextBlock Text="Record length (samples)" />
-                                    <NumericUpDown Value="{Binding RecordLength}"
-                                                   Minimum="1" Maximum="{Binding MaxRecordLength}"
-                                                   Increment="1024" FormatString="0" />
+                                        <TextBlock Text="Level (ADC code)" />
+                                        <NumericUpDown Value="{Binding TriggerLevel}"
+                                                       Minimum="0" Maximum="255" Increment="1"
+                                                       FormatString="0" />
 
-                                    <TextBlock Text="Pretrigger (samples)" />
-                                    <NumericUpDown Value="{Binding Pretrigger}"
-                                                   Minimum="0" Maximum="{Binding MaxPretrigger}"
-                                                   Increment="256" FormatString="0" />
+                                        <TextBlock Text="Pretrigger (samples)" />
+                                        <NumericUpDown Value="{Binding Pretrigger}"
+                                                       Minimum="0" Maximum="{Binding MaxPretrigger}"
+                                                       Increment="256" FormatString="0" />
 
-                                    <TextBlock Text="Mode" />
-                                    <ComboBox SelectedIndex="0" IsEnabled="False"
-                                              HorizontalAlignment="Stretch"
-                                              ToolTip.Tip="Available when the firmware supports it"
-                                              ToolTip.ShowOnDisabled="True">
-                                        <ComboBoxItem Content="Normal" />
-                                        <ComboBoxItem Content="Auto" />
-                                        <ComboBoxItem Content="Single" />
-                                    </ComboBox>
+                                        <TextBlock Text="Mode" />
+                                        <ComboBox SelectedIndex="0" IsEnabled="False"
+                                                  HorizontalAlignment="Stretch"
+                                                  ToolTip.Tip="Available when the firmware supports it"
+                                                  ToolTip.ShowOnDisabled="True">
+                                            <ComboBoxItem Content="Normal" />
+                                            <ComboBoxItem Content="Auto" />
+                                            <ComboBoxItem Content="Single" />
+                                        </ComboBox>
 
-                                    <TextBlock Text="Decimation" />
-                                    <NumericUpDown IsEnabled="False"
-                                                   ToolTip.Tip="Available when the firmware supports it"
-                                                   ToolTip.ShowOnDisabled="True" />
+                                        <Expander Header="Advanced" Margin="0,4,0,0">
+                                            <StackPanel Spacing="8" Margin="0,8,0,0">
 
-                                    <Expander Header="Advanced" Margin="0,8,0,0">
-                                        <StackPanel Spacing="8" Margin="0,8,0,0">
-                                            <TextBlock Text="Hysteresis (ADC code)" />
-                                            <NumericUpDown Value="{Binding TriggerHysteresis}"
-                                                           Minimum="0" Maximum="255" Increment="1"
-                                                           FormatString="0" />
+                                                <TextBlock Text="Record length (samples)" />
+                                                <NumericUpDown Value="{Binding RecordLength}"
+                                                               Minimum="1"
+                                                               Maximum="{Binding MaxRecordLength}"
+                                                               Increment="1024" FormatString="0" />
 
-                                            <TextBlock Text="Holdoff (samples)" />
-                                            <NumericUpDown IsEnabled="False"
-                                                           ToolTip.Tip="Available when the firmware supports it"
-                                                           ToolTip.ShowOnDisabled="True" />
-                                        </StackPanel>
-                                    </Expander>
+                                                <TextBlock Text="Hysteresis (ADC code)" />
+                                                <NumericUpDown Value="{Binding TriggerHysteresis}"
+                                                               Minimum="0" Maximum="255" Increment="1"
+                                                               FormatString="0" />
+
+                                                <TextBlock Text="Decimation" />
+                                                <NumericUpDown IsEnabled="False"
+                                                               ToolTip.Tip="Available when the firmware supports it"
+                                                               ToolTip.ShowOnDisabled="True" />
+
+                                                <TextBlock Text="Holdoff (samples)" />
+                                                <NumericUpDown IsEnabled="False"
+                                                               ToolTip.Tip="Available when the firmware supports it"
+                                                               ToolTip.ShowOnDisabled="True" />
+                                            </StackPanel>
+                                        </Expander>
+                                    </StackPanel>
                                 </StackPanel>
-                            </ScrollViewer>
-                        </TabItem>
+                            </Grid>
 
-                        <TabItem Header="CH1">
-                            <ContentControl Content="{Binding Channel1}"
-                                            ContentTemplate="{StaticResource ChannelTemplate}"
-                                            IsEnabled="{Binding CanEditSettings}" />
-                        </TabItem>
+                            <!-- Channel blocks -->
+                            <views:ChannelBlock DataContext="{Binding Channel1}" />
+                            <views:ChannelBlock DataContext="{Binding Channel2}" />
 
-                        <TabItem Header="CH2">
-                            <ContentControl Content="{Binding Channel2}"
-                                            ContentTemplate="{StaticResource ChannelTemplate}"
-                                            IsEnabled="{Binding CanEditSettings}" />
-                        </TabItem>
-
-                    </TabControl>
+                        </StackPanel>
+                    </ScrollViewer>
                 </DockPanel>
             </Border>
         </Grid>

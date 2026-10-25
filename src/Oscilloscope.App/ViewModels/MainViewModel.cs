@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -37,8 +38,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public MainViewModel()
     {
-        Channel1 = new ChannelViewModel(1, enabled: true, OnChannelToggled);
-        Channel2 = new ChannelViewModel(2, enabled: false, OnChannelToggled);
+        Channel1 = new ChannelViewModel(1, enabled: true, ChannelColors.Channel1, OnChannelToggled);
+        Channel2 = new ChannelViewModel(2, enabled: false, ChannelColors.Channel2, OnChannelToggled);
+
+        Channel1.SelectRequested += c => SelectBlock(c.Number);
+        Channel2.SelectRequested += c => SelectBlock(c.Number);
     }
 
     private void OnChannelToggled(ChannelViewModel changed)
@@ -54,6 +58,17 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    protected override void OnPropertyChanged(PropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+
+        if (e.PropertyName == nameof(CanEditSettings))
+        {
+            Channel1.CanEdit = CanEditSettings;
+            Channel2.CanEdit = CanEditSettings;
+        }
+    }
+
     [ObservableProperty]
     public partial string Host { get; set; } = "192.168.1.50";
 
@@ -62,6 +77,21 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial bool IsPanelOpen { get; set; } = true;
+
+    /// <summary>Which block of the side panel is open: 0 = trigger, 1 = CH1, 2 = CH2.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTriggerSelected))]
+    public partial int SelectedBlock { get; set; }
+
+    public bool IsTriggerSelected => SelectedBlock == 0;
+
+    partial void OnSelectedBlockChanged(int value)
+    {
+        Channel1.IsSelected = value == 1;
+        Channel2.IsSelected = value == 2;
+    }
+
+    public void SelectBlock(int index) => SelectedBlock = Math.Clamp(index, 0, 2);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
@@ -94,13 +124,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Index into the source list: 0 = channel 1, 1 = channel 2.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TriggerSummary))]
     public partial int TriggerSourceIndex { get; set; }
 
     /// <summary>Index into the edge list: 0 = rising, 1 = falling, 2 = both.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TriggerSummary))]
     public partial int TriggerEdgeIndex { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TriggerSummary))]
     public partial decimal TriggerLevel { get; set; } = 128;
 
     [ObservableProperty]
@@ -114,6 +147,21 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MaxPretrigger))]
     public partial decimal RecordLength { get; set; } = 65536;
+
+    /// <summary>One-line description shown in the header of the trigger block.</summary>
+    public string TriggerSummary
+    {
+        get
+        {
+            string edge = TriggerEdgeIndex switch
+            {
+                0 => "rising",
+                1 => "falling",
+                _ => "both edges",
+            };
+            return $"CH{TriggerSourceIndex + 1}, {edge}, level {TriggerLevel:0}";
+        }
+    }
 
     public decimal MaxRecordLength => ProtocolConstants.MaxSamplesPerChannel;
 

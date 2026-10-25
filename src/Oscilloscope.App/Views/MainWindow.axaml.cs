@@ -10,9 +10,9 @@ namespace Oscilloscope.App.Views;
 
 public partial class MainWindow : Window
 {
-    private static readonly ScottPlot.Color Channel1Color = ScottPlot.Color.FromHex("#FFB000");
-    private static readonly ScottPlot.Color Channel2Color = ScottPlot.Color.FromHex("#4FC3F7");
-    private static readonly ScottPlot.Color TriggerColor = ScottPlot.Color.FromHex("#E5484D");
+    private static readonly ScottPlot.Color Channel1Color = ScottPlot.Color.FromHex(ChannelColors.Channel1);
+    private static readonly ScottPlot.Color Channel2Color = ScottPlot.Color.FromHex(ChannelColors.Channel2);
+    private static readonly ScottPlot.Color TriggerColor = ScottPlot.Color.FromHex(ChannelColors.Trigger);
     private static readonly ScottPlot.Color PretriggerColor = ScottPlot.Color.FromHex("#8E8E99");
 
     /// <summary>How close (in DIPs) the pointer must be to a marker line to grab it.</summary>
@@ -61,6 +61,9 @@ public partial class MainWindow : Window
         plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#2E2E36");
     }
 
+    private void OnTriggerHeaderTapped(object? sender, TappedEventArgs e) =>
+        _viewModel?.SelectBlock(0); 
+    
     private void OnDebugClick(object? sender, RoutedEventArgs e)
     {
         if (_viewModel is null)

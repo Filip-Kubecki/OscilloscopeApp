@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Oscilloscope.App.ViewModels"
+             x:Class="Oscilloscope.App.Views.ChannelBlock"
+             x:DataType="vm:ChannelViewModel">
+
+    <Grid>
+        <!-- Card background -->
+        <Border Background="#24242B" BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" />
+
+        <!-- Highlight when selected: a tint and an outline in the channel color -->
+        <Border Background="{Binding Accent}" Opacity="0.12" CornerRadius="6"
+                IsVisible="{Binding IsSelected}" IsHitTestVisible="False" />
+        <Border BorderBrush="{Binding Accent}" BorderThickness="2" CornerRadius="6"
+                IsVisible="{Binding IsSelected}" IsHitTestVisible="False" />
+
+        <StackPanel>
+
+            <!-- Header: always visible, a click selects the block -->
+            <Border Background="Transparent" Cursor="Hand" Padding="10,8"
+                    Tapped="OnHeaderTapped">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Width="4" Height="18" CornerRadius="2"
+                            Background="{Binding Accent}"
+                            VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding Title}"
+                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <CheckBox Grid.Column="2" Content="Enabled"
+                              IsChecked="{Binding IsEnabled}"
+                              IsEnabled="{Binding CanEdit}" />
+                </Grid>
+            </Border>
+
+            <!-- Body: only for the selected block -->
+            <StackPanel IsVisible="{Binding IsSelected}"
+                        IsEnabled="{Binding CanEdit}"
+                        Spacing="8" Margin="10,0,10,10">
+
+                <TextBlock Text="Gain" />
+                <NumericUpDown IsEnabled="False"
+                               ToolTip.Tip="Available when the firmware supports it"
+                               ToolTip.ShowOnDisabled="True" />
+
+                <TextBlock Text="Offset" />
+                <NumericUpDown IsEnabled="False"
+                               ToolTip.Tip="Available when the firmware supports it"
+                               ToolTip.ShowOnDisabled="True" />
+
+                <Expander Header="Advanced" Margin="0,4,0,0">
+                    <StackPanel Spacing="4" Margin="0,8,0,0">
+                        <TextBlock Text="Applied gain: -" Opacity="0.5" />
+                        <TextBlock Text="Applied offset: -" Opacity="0.5" />
+                        <TextBlock Text="Overrange: -" Opacity="0.5" />
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -28,6 +28,10 @@ public partial class ChannelViewModel(
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
+    /// <summary>The advanced overlay of this channel is open. Set by MainViewModel.</summary>
+    [ObservableProperty]
+    public partial bool IsAdvancedOpen { get; set; }
+
     /// <summary>Settings may be edited (connected and not busy). Set by MainViewModel.</summary>
     [ObservableProperty]
     public partial bool CanEdit { get; set; }
@@ -43,7 +47,12 @@ public partial class ChannelViewModel(
     /// <summary>Raised when the user clicks the block header.</summary>
     public event Action<ChannelViewModel>? SelectRequested;
 
+    /// <summary>Raised when the user clicks the Advanced button of the block.</summary>
+    public event Action<ChannelViewModel>? AdvancedRequested;
+
     public void RequestSelect() => SelectRequested?.Invoke(this);
+
+    public void RequestAdvanced() => AdvancedRequested?.Invoke(this);
 
     partial void OnIsEnabledChanged(bool value) => enabledChanged(this);
 }

@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Oscilloscope.App.ViewModels"
+             x:Class="Oscilloscope.App.Views.ChannelAdvanced"
+             x:DataType="vm:ChannelViewModel">
+
+    <StackPanel Spacing="8">
+        <Grid ColumnDefinitions="Auto,*" Margin="0,0,28,0">
+            <Border Width="4" Height="18" CornerRadius="2"
+                    Background="{Binding Accent}"
+                    VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="1" FontWeight="SemiBold" VerticalAlignment="Center">
+                <Run Text="{Binding Title}" />
+                <Run Text=" - advanced" />
+            </TextBlock>
+        </Grid>
+
+        <TextBlock Text="Status" Opacity="0.6" Margin="0,4,0,0" />
+        <TextBlock Text="Applied gain: -" Opacity="0.5" />
+        <TextBlock Text="Applied offset: -" Opacity="0.5" />
+        <TextBlock Text="Overrange: -" Opacity="0.5" />
+    </StackPanel>
+</UserControl>

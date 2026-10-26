@@ -43,6 +43,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         Channel1.SelectRequested += c => SelectChannel(c.Number);
         Channel2.SelectRequested += c => SelectChannel(c.Number);
+        Channel1.AdvancedRequested += ToggleChannelAdvanced;
+        Channel2.AdvancedRequested += ToggleChannelAdvanced;
         Channel1.IsSelected = true;
     }
 
@@ -90,6 +92,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool IsPanelOpen { get; set; } = true;
 
+    // Closing the panel also closes the advanced overlay that belongs to it.
+    partial void OnIsPanelOpenChanged(bool value)
+    {
+        if (!value)
+            AdvancedSection = 0;
+    }
+
     /// <summary>Which channel block is open in the side panel (1 or 2). The trigger block is always open.</summary>
     [ObservableProperty]
     public partial int SelectedChannel { get; set; } = 1;
@@ -101,6 +110,44 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     public void SelectChannel(int number) => SelectedChannel = number == 2 ? 2 : 1;
+
+    // --- Advanced overlay (floats over the plot, left of the side panel) ---
+
+    /// <summary>Which advanced overlay is open: 0 = none, 1 = trigger, 2 = CH1, 3 = CH2.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAdvancedOpen))]
+    [NotifyPropertyChangedFor(nameof(IsTriggerAdvancedOpen))]
+    [NotifyPropertyChangedFor(nameof(IsChannel1AdvancedOpen))]
+    [NotifyPropertyChangedFor(nameof(IsChannel2AdvancedOpen))]
+    public partial int AdvancedSection { get; set; }
+
+    public bool IsAdvancedOpen => AdvancedSection != 0;
+    public bool IsTriggerAdvancedOpen => AdvancedSection == 1;
+    public bool IsChannel1AdvancedOpen => AdvancedSection == 2;
+    public bool IsChannel2AdvancedOpen => AdvancedSection == 3;
+
+    partial void OnAdvancedSectionChanged(int value)
+    {
+        Channel1.IsAdvancedOpen = value == 2;
+        Channel2.IsAdvancedOpen = value == 3;
+    }
+
+    [RelayCommand]
+    private void ToggleTriggerAdvanced() => AdvancedSection = AdvancedSection == 1 ? 0 : 1;
+
+    [RelayCommand]
+    private void CloseAdvanced() => AdvancedSection = 0;
+
+    private void ToggleChannelAdvanced(ChannelViewModel channel)
+    {
+        int section = channel.Number + 1;
+        AdvancedSection = AdvancedSection == section ? 0 : section;
+
+        if (AdvancedSection == section)
+            SelectChannel(channel.Number);
+    }
+
+    // --- Connection state ----------------------------------------------
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]

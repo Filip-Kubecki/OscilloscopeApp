@@ -10,7 +10,8 @@ public readonly record struct RecordHeader(
     uint RecordId,
     byte ChannelMask,
     byte SampleBits,
-    uint SamplesPerChannel)
+    uint SamplesPerChannel,
+    uint TriggerPosition)
 {
     public bool Overrange => (Flags & 0x01) != 0;
 
@@ -32,7 +33,8 @@ public readonly record struct RecordHeader(
             RecordId: BinaryPrimitives.ReadUInt32BigEndian(s[8..12]),
             ChannelMask: s[12],
             SampleBits: s[13],
-            SamplesPerChannel: BinaryPrimitives.ReadUInt32BigEndian(s[16..20]));
+            SamplesPerChannel: BinaryPrimitives.ReadUInt32BigEndian(s[16..20]),
+            TriggerPosition: BinaryPrimitives.ReadUInt32BigEndian(s[20..24]));
 
         header.Validate();
         return header;
@@ -45,11 +47,20 @@ public readonly record struct RecordHeader(
         if (SampleBits != 8)
             throw new ProtocolException($"Unsupported sample width: {SampleBits} bits.");
 
+        uint maxSamples = MaxSamplesForMask(ChannelMask);
+        if (SamplesPerChannel == 0 || SamplesPerChannel > maxSamples)
+            throw new ProtocolException(
+                $"SAMPLES_PER_CH = {SamplesPerChannel} is outside 1..{maxSamples} for mask 0x{ChannelMask:X2}.");
+
         ulong expected = (ulong)SamplesPerChannel * (ulong)ChannelCount * SampleBits / 8;
         if (expected != PayloadLength)
             throw new ProtocolException(
                 $"PAYLOAD_LEN = {PayloadLength}, but the header fields imply {expected}.");
         if (PayloadLength > MaxPayloadLength)
             throw new ProtocolException($"PAYLOAD_LEN = {PayloadLength} exceeds the limit.");
+
+        if (TriggerPosition >= SamplesPerChannel)
+            throw new ProtocolException(
+                $"TRIGGER_POS = {TriggerPosition} is outside the record ({SamplesPerChannel} samples).");
     }
 }

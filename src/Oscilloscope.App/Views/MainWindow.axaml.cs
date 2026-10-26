@@ -61,9 +61,6 @@ public partial class MainWindow : Window
         plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#2E2E36");
     }
 
-    private void OnTriggerHeaderTapped(object? sender, TappedEventArgs e) =>
-        _viewModel?.SelectBlock(0); 
-    
     private void OnDebugClick(object? sender, RoutedEventArgs e)
     {
         if (_viewModel is null)

@@ -97,7 +97,7 @@
         <Grid>
             <sp:AvaPlot x:Name="Plot" />
 
-            <!-- Side panel, floating over the plot: Trigger, CH1 and CH2 blocks -->
+            <!-- Side panel, floating over the plot: Trigger (always open), CH1 and CH2 -->
             <Border IsVisible="{Binding IsPanelOpen}"
                     Width="290"
                     HorizontalAlignment="Right"
@@ -121,34 +121,24 @@
                     <ScrollViewer>
                         <StackPanel Spacing="8">
 
-                            <!-- Trigger block -->
+                            <!-- Trigger block: always open -->
                             <Grid>
                                 <Border Background="#24242B" BorderBrush="#40808080"
                                         BorderThickness="1" CornerRadius="6" />
-                                <Border Background="#E5484D" Opacity="0.12" CornerRadius="6"
-                                        IsVisible="{Binding IsTriggerSelected}"
-                                        IsHitTestVisible="False" />
-                                <Border BorderBrush="#E5484D" BorderThickness="2" CornerRadius="6"
-                                        IsVisible="{Binding IsTriggerSelected}"
-                                        IsHitTestVisible="False" />
 
                                 <StackPanel>
-                                    <Border Background="Transparent" Cursor="Hand" Padding="10,8"
-                                            Tapped="OnTriggerHeaderTapped">
-                                        <Grid ColumnDefinitions="Auto,*">
-                                            <Border Width="4" Height="28" CornerRadius="2"
-                                                    Background="#E5484D"
-                                                    VerticalAlignment="Center" Margin="0,0,8,0" />
-                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                <TextBlock Text="Trigger" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding TriggerSummary}"
-                                                           FontSize="12" Opacity="0.6" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
+                                    <Grid ColumnDefinitions="Auto,*" Margin="10,8">
+                                        <Border Width="4" Height="28" CornerRadius="2"
+                                                Background="#E5484D"
+                                                VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="Trigger" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding TriggerSummary}"
+                                                       FontSize="12" Opacity="0.6" />
+                                        </StackPanel>
+                                    </Grid>
 
-                                    <StackPanel IsVisible="{Binding IsTriggerSelected}"
-                                                IsEnabled="{Binding CanEditSettings}"
+                                    <StackPanel IsEnabled="{Binding CanEditSettings}"
                                                 Spacing="8" Margin="10,0,10,10">
 
                                         <TextBlock Text="Source" />
@@ -202,7 +192,7 @@
 
                                                 <TextBlock Text="Decimation" />
                                                 <NumericUpDown IsEnabled="False"
-                                                               ToolTip.Tip="Available when the firmware supports it"
+                                                               ToolTip.Tip="Not wired up in the app yet"
                                                                ToolTip.ShowOnDisabled="True" />
 
                                                 <TextBlock Text="Holdoff (samples)" />
@@ -215,7 +205,7 @@
                                 </StackPanel>
                             </Grid>
 
-                            <!-- Channel blocks -->
+                            <!-- Channel blocks: one of them is open -->
                             <views:ChannelBlock DataContext="{Binding Channel1}" />
                             <views:ChannelBlock DataContext="{Binding Channel2}" />
 

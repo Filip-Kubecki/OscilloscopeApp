@@ -22,15 +22,21 @@ public readonly record struct TriggerConfig(
     byte Level,
     byte Hysteresis);
 
+/// <summary>Analog front end of one channel, as raw register values (PGA gain word, DAC code).</summary>
+public readonly record struct ChannelConfig(uint Gain, uint Offset);
+
 /// <summary>
 /// Everything the application configures: trigger, pretrigger, record length
-/// (samples per channel) and the channel mask (bit 0 = channel 1, bit 1 = channel 2).
+/// (samples per channel), the channel mask (bit 0 = channel 1, bit 1 = channel 2)
+/// and the analog settings of both channels.
 /// </summary>
 public readonly record struct CaptureConfig(
     TriggerConfig Trigger,
     uint Pretrigger,
     uint RecordLength,
-    uint ChannelMask);
+    uint ChannelMask,
+    ChannelConfig Channel1,
+    ChannelConfig Channel2);
 
 public static class TriggerExtensions
 {
@@ -56,7 +62,7 @@ public static class TriggerExtensions
         return new TriggerConfig((TriggerSource)source, (TriggerEdge)edge, (byte)level, (byte)hysteresis);
     }
 
-    /// <summary>Reads the pending trigger, pretrigger, record length and channel mask.</summary>
+    /// <summary>Reads the whole pending configuration.</summary>
     public static async Task<CaptureConfig> ReadCaptureConfigAsync(
         this DeviceClient device, CancellationToken ct = default)
     {
@@ -68,7 +74,14 @@ public static class TriggerExtensions
         if (mask is 0 or > 3)
             throw new ProtocolException($"Unexpected ACQUISITION_CHANNEL_MASK value: 0x{mask:X}.");
 
-        return new CaptureConfig(trigger, pretrigger, length, mask);
+        var ch1 = new ChannelConfig(
+            await device.ReadRegisterAsync(Registers.Channel1Gain, ct),
+            await device.ReadRegisterAsync(Registers.Channel1Offset, ct));
+        var ch2 = new ChannelConfig(
+            await device.ReadRegisterAsync(Registers.Channel2Gain, ct),
+            await device.ReadRegisterAsync(Registers.Channel2Offset, ct));
+
+        return new CaptureConfig(trigger, pretrigger, length, mask, ch1, ch2);
     }
 
     /// <summary>Pending record length in samples per channel.</summary>
@@ -85,16 +98,36 @@ public static class TriggerExtensions
     }
 
     /// <summary>
-    /// Writes channel mask, record length, pretrigger and the trigger registers, then one COMMIT.
-    /// Call it only while the acquisition is stopped.
+    /// Writes the whole configuration, then one COMMIT. The device must be IDLE
+    /// (COMMIT is accepted only there).
+    /// <para>
+    /// Record length and channel mask are checked against each other when written
+    /// (docs/protocol.md, section 3.1): moving to mask 03 needs the length to be at most 65536
+    /// first, a length above 65536 needs a single-channel mask first.
+    /// </para>
     /// </summary>
     public static async Task ApplyCaptureConfigAsync(
         this DeviceClient device, CaptureConfig config, CancellationToken ct = default)
     {
-        await device.WriteRegisterAsync(Registers.AcquisitionChannelMask, config.ChannelMask, ct);
-        await device.WriteRegisterAsync(Registers.AcquisitionRecordLength, config.RecordLength, ct);
+        if (config.ChannelMask == 0x03)
+        {
+            await device.WriteRegisterAsync(Registers.AcquisitionRecordLength, config.RecordLength, ct);
+            await device.WriteRegisterAsync(Registers.AcquisitionChannelMask, config.ChannelMask, ct);
+        }
+        else
+        {
+            await device.WriteRegisterAsync(Registers.AcquisitionChannelMask, config.ChannelMask, ct);
+            await device.WriteRegisterAsync(Registers.AcquisitionRecordLength, config.RecordLength, ct);
+        }
+
         await device.WriteRegisterAsync(Registers.AcquisitionPretrigger, config.Pretrigger, ct);
         await WriteTriggerRegistersAsync(device, config.Trigger, ct);
+
+        await device.WriteRegisterAsync(Registers.Channel1Gain, config.Channel1.Gain, ct);
+        await device.WriteRegisterAsync(Registers.Channel1Offset, config.Channel1.Offset, ct);
+        await device.WriteRegisterAsync(Registers.Channel2Gain, config.Channel2.Gain, ct);
+        await device.WriteRegisterAsync(Registers.Channel2Offset, config.Channel2.Offset, ct);
+
         await device.SendCommandAsync(Registers.CommandCommit, ct);
     }
 

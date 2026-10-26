@@ -60,7 +60,7 @@ public class RecordTests
 {
     private static byte[] MakeHeader(
         byte mask = 0x01, uint samples = 4, uint? payload = null,
-        byte type = 0xD0, uint id = 7, byte bits = 8)
+        byte type = 0xD0, uint id = 7, byte bits = 8, uint triggerPos = 0)
     {
         var h = new byte[64];
         h[0] = 0xC7;
@@ -72,6 +72,7 @@ public class RecordTests
         h[12] = mask;
         h[13] = bits;
         BinaryPrimitives.WriteUInt32BigEndian(h.AsSpan(16), samples);
+        BinaryPrimitives.WriteUInt32BigEndian(h.AsSpan(20), triggerPos);
         return h;
     }
 
@@ -111,6 +112,51 @@ public class RecordTests
     }
 
     [Fact]
+    public void Accepts_single_channel_record_up_to_65536_samples()
+    {
+        var header = RecordHeader.Parse(MakeHeader(mask: 0x01, samples: 65536));
+        Assert.Equal(65536u, header.PayloadLength);
+    }
+
+    [Fact]
+    public void Rejects_single_channel_record_above_65536_samples()
+    {
+        Assert.Throws<ProtocolException>(() => RecordHeader.Parse(MakeHeader(mask: 0x01, samples: 65537)));
+    }
+
+    [Fact]
+    public void Accepts_two_channel_record_up_to_32768_samples()
+    {
+        var header = RecordHeader.Parse(MakeHeader(mask: 0x03, samples: 32768));
+        Assert.Equal(65536u, header.PayloadLength);
+    }
+
+    [Fact]
+    public void Rejects_two_channel_record_above_32768_samples()
+    {
+        Assert.Throws<ProtocolException>(() => RecordHeader.Parse(MakeHeader(mask: 0x03, samples: 32769)));
+    }
+
+    [Fact]
+    public void Rejects_zero_samples()
+    {
+        Assert.Throws<ProtocolException>(() => RecordHeader.Parse(MakeHeader(samples: 0)));
+    }
+
+    [Fact]
+    public void Parses_trigger_position()
+    {
+        var header = RecordHeader.Parse(MakeHeader(samples: 100, triggerPos: 25));
+        Assert.Equal(25u, header.TriggerPosition);
+    }
+
+    [Fact]
+    public void Rejects_trigger_position_outside_record()
+    {
+        Assert.Throws<ProtocolException>(() => RecordHeader.Parse(MakeHeader(samples: 100, triggerPos: 100)));
+    }
+
+    [Fact]
     public void Extracts_channels_from_interleaved_record()
     {
         var header = RecordHeader.Parse(MakeHeader(mask: 0x03, samples: 3));
@@ -129,11 +175,4 @@ public class RecordTests
         Assert.Equal(new byte[] { 5, 6, 7 }, record.ExtractChannel(1));
         Assert.Throws<InvalidOperationException>(() => record.ExtractChannel(2));
     }
-    
-    [Fact]
-    public void Accepts_maximum_record_with_two_channels()
-    {
-        var header = RecordHeader.Parse(MakeHeader(mask: 0x03, samples: 65536));
-        Assert.Equal(131072u, header.PayloadLength);
-    } 
 }

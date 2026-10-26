@@ -9,10 +9,14 @@ public static class ProtocolConstants
     public const int RecordHeaderLength = 64;
     public const byte RecordTypeData = 0xD0;
 
-    public const uint MaxSamplesPerChannel = 65536;
+    public const uint MaxSamplesSingleChannel = 65536; // mask 01 or 02
+    public const uint MaxSamplesDualChannel = 32768;   // mask 03
 
-    // Zabezpieczenie przed zepsutym nagłówkiem: maksimum to 2 kanały po 8192 próbki (8 bit).
-    public const uint MaxPayloadLength = 2 * MaxSamplesPerChannel;
+    // Largest data block: 65536 bytes in both cases. Protection against a corrupted header.
+    public const uint MaxPayloadLength = 65536;
+
+    public static uint MaxSamplesForMask(uint mask) =>
+        mask == 0x03 ? MaxSamplesDualChannel : MaxSamplesSingleChannel;
 }
 
 public enum Command : byte
@@ -42,43 +46,55 @@ public enum AcquisitionState : uint
     Ready = 3,
 }
 
-/// <summary>Adresy rejestrów (na razie tylko status "implemented").</summary>
+/// <summary>Register addresses (only those with status "implemented").</summary>
 public static class Registers
 {
+    // Identity
     public const byte DeviceId = 0x00;
     public const byte ProtocolVersion = 0x01;
 
+    // Commands
+    public const byte CommandCommit = 0x10;
     public const byte CommandArm = 0x11;
     public const byte CommandStop = 0x12;
     public const byte CommandForceTrigger = 0x13;
-    public const byte CommandReadRecord = 0x17;
-
-    public const byte AcquisitionState = 0xA0;
-    public const byte AcquisitionRecordId = 0xA4;
-
-    public const byte DebugScratch0 = 0xF0;
-    public const byte DebugScratch1 = 0xF1;
-    public const byte DebugLed = 0xF2;
-    public const byte DebugConst = 0xF3;
-    
-    public const byte CommandCommit = 0x10;
     public const byte CommandClearCounters = 0x15;
     public const byte CommandResetConfig = 0x16;
+    public const byte CommandReadRecord = 0x17;
 
+    // Acquisition configuration
     public const byte AcquisitionRecordLength = 0x31;
     public const byte AcquisitionPretrigger = 0x32;
+    public const byte AcquisitionDecimation = 0x33;
     public const byte AcquisitionChannelMask = 0x34;
 
+    // Trigger configuration
     public const byte TriggerSource = 0x40;
     public const byte TriggerEdge = 0x41;
     public const byte TriggerLevel = 0x42;
     public const byte TriggerHysteresis = 0x43;
 
+    // Channel configuration
+    public const byte Channel1Gain = 0x50;
+    public const byte Channel1Offset = 0x51;
+    public const byte Channel2Gain = 0x60;
+    public const byte Channel2Offset = 0x61;
+
+    // Counters
     public const byte CounterFramesOk = 0x90;
     public const byte CounterBadMagic = 0x91;
     public const byte CounterUnknownCommand = 0x92;
     public const byte CounterBadAddress = 0x93;
 
+    // Acquisition status
+    public const byte AcquisitionState = 0xA0;
     public const byte AcquisitionWritePointer = 0xA1;
-    public const byte AcquisitionTriggerPointer = 0xA2; 
+    public const byte AcquisitionTriggerPointer = 0xA2;
+    public const byte AcquisitionRecordId = 0xA4;
+
+    // Debug
+    public const byte DebugScratch0 = 0xF0;
+    public const byte DebugScratch1 = 0xF1;
+    public const byte DebugLed = 0xF2;
+    public const byte DebugConst = 0xF3;
 }

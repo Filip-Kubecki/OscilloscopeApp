@@ -36,15 +36,15 @@
                         IsEnabled="{Binding CanEdit}"
                         Spacing="8" Margin="10,0,10,10">
 
-                <TextBlock Text="Gain" />
-                <NumericUpDown IsEnabled="False"
-                               ToolTip.Tip="Available when the firmware supports it"
-                               ToolTip.ShowOnDisabled="True" />
+                <TextBlock Text="Gain (raw word)" />
+                <NumericUpDown Value="{Binding Gain}"
+                               Minimum="0" Maximum="511" Increment="1" FormatString="0"
+                               ToolTip.Tip="Raw AD8370 gain word with the range bit. Conversion to dB is not defined yet." />
 
-                <TextBlock Text="Offset" />
-                <NumericUpDown IsEnabled="False"
-                               ToolTip.Tip="Available when the firmware supports it"
-                               ToolTip.ShowOnDisabled="True" />
+                <TextBlock Text="Offset (DAC code)" />
+                <NumericUpDown Value="{Binding Offset}"
+                               Minimum="0" Maximum="4095" Increment="16" FormatString="0"
+                               ToolTip.Tip="MCP4822 code, 0 to 4095." />
 
                 <Expander Header="Advanced" Margin="0,4,0,0">
                     <StackPanel Spacing="4" Margin="0,8,0,0">

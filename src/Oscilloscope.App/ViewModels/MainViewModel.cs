@@ -41,8 +41,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         Channel1 = new ChannelViewModel(1, enabled: true, ChannelColors.Channel1, OnChannelToggled);
         Channel2 = new ChannelViewModel(2, enabled: false, ChannelColors.Channel2, OnChannelToggled);
 
-        Channel1.SelectRequested += c => SelectBlock(c.Number);
-        Channel2.SelectRequested += c => SelectBlock(c.Number);
+        Channel1.SelectRequested += c => SelectChannel(c.Number);
+        Channel2.SelectRequested += c => SelectChannel(c.Number);
+        Channel1.IsSelected = true;
     }
 
     private void OnChannelToggled(ChannelViewModel changed)
@@ -55,7 +56,18 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             changed.IsEnabled = true;
             Status = "At least one channel must stay enabled.";
+            return;
         }
+
+        UpdateRecordLengthLimit();
+    }
+
+    /// <summary>The maximum record length depends on the mask, so it is recomputed when channels change.</summary>
+    private void UpdateRecordLengthLimit()
+    {
+        OnPropertyChanged(nameof(MaxRecordLength));
+        if (RecordLength > MaxRecordLength)
+            RecordLength = MaxRecordLength;
     }
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
@@ -78,20 +90,17 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool IsPanelOpen { get; set; } = true;
 
-    /// <summary>Which block of the side panel is open: 0 = trigger, 1 = CH1, 2 = CH2.</summary>
+    /// <summary>Which channel block is open in the side panel (1 or 2). The trigger block is always open.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsTriggerSelected))]
-    public partial int SelectedBlock { get; set; }
+    public partial int SelectedChannel { get; set; } = 1;
 
-    public bool IsTriggerSelected => SelectedBlock == 0;
-
-    partial void OnSelectedBlockChanged(int value)
+    partial void OnSelectedChannelChanged(int value)
     {
         Channel1.IsSelected = value == 1;
         Channel2.IsSelected = value == 2;
     }
 
-    public void SelectBlock(int index) => SelectedBlock = Math.Clamp(index, 0, 2);
+    public void SelectChannel(int number) => SelectedChannel = number == 2 ? 2 : 1;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanAcquire))]
@@ -163,9 +172,13 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public decimal MaxRecordLength => ProtocolConstants.MaxSamplesPerChannel;
+    /// <summary>65536 samples with one channel enabled, 32768 per channel with both.</summary>
+    public decimal MaxRecordLength =>
+        Channel1.IsEnabled && Channel2.IsEnabled
+            ? ProtocolConstants.MaxSamplesDualChannel
+            : ProtocolConstants.MaxSamplesSingleChannel;
 
-    /// <summary>Largest allowed pretrigger (assumed: record length - 1).</summary>
+    /// <summary>Largest allowed pretrigger (record length - 1).</summary>
     public decimal MaxPretrigger => RecordLength > 0 ? RecordLength - 1 : 0;
 
     partial void OnRecordLengthChanged(decimal value)
@@ -259,9 +272,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         Channel2.IsEnabled = (config.ChannelMask & 0x02) != 0;
         _updatingChannels = false;
 
-        // The record length goes first: it limits the pretrigger.
+        Channel1.Gain = config.Channel1.Gain;
+        Channel1.Offset = config.Channel1.Offset;
+        Channel2.Gain = config.Channel2.Gain;
+        Channel2.Offset = config.Channel2.Offset;
+
+        // The record length limit depends on the mask, and the pretrigger on the record length.
+        OnPropertyChanged(nameof(MaxRecordLength));
         RecordLength = config.RecordLength;
         Pretrigger = config.Pretrigger;
+
         TriggerSourceIndex = (int)t.Source;
         TriggerEdgeIndex = (int)t.Edge;
         TriggerLevel = t.Level;
@@ -292,9 +312,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             (byte)Math.Clamp(TriggerLevel, 0, 255),
             (byte)Math.Clamp(TriggerHysteresis, 0, 255));
 
-        config = new CaptureConfig(trigger, pretrigger, length, mask);
+        config = new CaptureConfig(
+            trigger, pretrigger, length, mask,
+            ToChannelConfig(Channel1), ToChannelConfig(Channel2));
         return true;
     }
+
+    private static ChannelConfig ToChannelConfig(ChannelViewModel channel) => new(
+        (uint)Math.Clamp(channel.Gain, 0m, ChannelViewModel.MaxGainWord),
+        (uint)Math.Clamp(channel.Offset, 0m, ChannelViewModel.MaxOffsetCode));
 
     [RelayCommand]
     private async Task ApplyTriggerAsync()
@@ -380,7 +406,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var c = await device.ReadCaptureConfigAsync();
             var t = c.Trigger;
             return $"Rejected values: state={state}, src={t.Source}, edge={t.Edge}, level={t.Level}, " +
-                   $"hyst={t.Hysteresis}, len={c.RecordLength}, pre={c.Pretrigger}, mask=0x{c.ChannelMask:X2}.";
+                   $"hyst={t.Hysteresis}, len={c.RecordLength}, pre={c.Pretrigger}, mask=0x{c.ChannelMask:X2}, " +
+                   $"ch1 gain={c.Channel1.Gain} offset={c.Channel1.Offset}, " +
+                   $"ch2 gain={c.Channel2.Gain} offset={c.Channel2.Offset}.";
         }
         catch (Exception ex)
         {

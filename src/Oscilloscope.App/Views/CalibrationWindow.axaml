@@ -1,0 +1,200 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Oscilloscope.App.ViewModels"
+        xmlns:sp="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
+        x:Class="Oscilloscope.App.Views.CalibrationWindow"
+        x:DataType="vm:CalibrationViewModel"
+        RequestedThemeVariant="Dark"
+        Width="1120" Height="700"
+        Title="Calibration - DC offset vs gain">
+
+    <Window.Styles>
+        <Style Selector="Button">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="NumericUpDown /template/ TextBox">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Opacity" Value="0.8" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.mono">
+            <Setter Property="FontFamily" Value="Consolas, Menlo, DejaVu Sans Mono, monospace" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="TextBlock.warn">
+            <Setter Property="Foreground" Value="#F85149" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel>
+
+        <!-- Status and progress -->
+        <Border DockPanel.Dock="Bottom" Padding="8,4"
+                BorderBrush="#40808080" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,220,Auto">
+                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ProgressBar Grid.Column="1" Minimum="0" Maximum="100"
+                             Value="{Binding ProgressPercent}"
+                             Height="8" Margin="12,0" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Classes="mono" Text="{Binding ProgressText}"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- Controls -->
+        <Border DockPanel.Dock="Top" Padding="10,8" Background="#1E1E24"
+                BorderBrush="#40808080" BorderThickness="0,0,0,1">
+            <StackPanel Spacing="6">
+
+                <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.75"
+                           Text="Short the input of the selected channel before starting. At each gain word the mean ADC code is measured. The low range (words 1-127) and the high range (words 129-255) are separate sweeps. Words 0 and 128 turn the gain stage off and are skipped. The channel settings are restored afterwards." />
+
+                <WrapPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="12"
+                                IsEnabled="{Binding CanEdit}">
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Channel" />
+                            <ComboBox SelectedIndex="{Binding ChannelIndex}" Width="84">
+                                <ComboBoxItem Content="CH1" />
+                                <ComboBoxItem Content="CH2" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Range" />
+                            <ComboBox SelectedIndex="{Binding RangeIndex}" Width="170">
+                                <ComboBoxItem Content="Low (words 1-127)" />
+                                <ComboBoxItem Content="High (words 129-255)" />
+                                <ComboBoxItem Content="Both" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Step" />
+                            <NumericUpDown Value="{Binding Step}" Minimum="1" Maximum="127"
+                                           Increment="1" FormatString="0" Width="100"
+                                           ToolTip.Tip="Gain code step. 1 = every code." />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Samples" />
+                            <NumericUpDown Value="{Binding SamplesPerPoint}" Minimum="1" Maximum="65536"
+                                           Increment="1024" FormatString="0" Width="140"
+                                           ToolTip.Tip="Samples per record at each gain (single channel, up to 65536)." />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Records" />
+                            <NumericUpDown Value="{Binding RecordsPerPoint}" Minimum="1" Maximum="100"
+                                           Increment="1" FormatString="0" Width="100"
+                                           ToolTip.Tip="Records averaged at each gain." />
+                        </StackPanel>
+                        
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Settle (ms)" />
+                            <NumericUpDown Value="{Binding SettleMs}" Minimum="0" Maximum="10000"
+                                           Increment="50" FormatString="0" Width="110"
+                                           ToolTip.Tip="Pause after the gain is applied, before measuring. Raise it if the mean still drifts." />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Discard" />
+                            <NumericUpDown Value="{Binding DiscardRecords}" Minimum="0" Maximum="10"
+                                           Increment="1" FormatString="0" Width="100"
+                                           ToolTip.Tip="Records acquired and thrown away after the pause, before measuring." />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,6">
+                        <Button Content="Start" Command="{Binding StartCommand}"
+                                IsEnabled="{Binding CanStart}" />
+                        <Button Content="Stop" Command="{Binding StopCommand}"
+                                IsEnabled="{Binding IsSweeping}" />
+                        <Button Content="Save results..." Click="OnSaveClick"
+                                IsEnabled="{Binding HasResults}" />
+                        <Button Content="Clear" Command="{Binding ClearCommand}"
+                                IsEnabled="{Binding CanEdit}" />
+                    </StackPanel>
+                </WrapPanel>
+
+                <TextBlock Classes="warn" FontSize="12" Text="{Binding StartBlockedText}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Results list -->
+        <Border DockPanel.Dock="Right" Width="340" Background="#1E1E24"
+                BorderBrush="#40808080" BorderThickness="1,0,0,0">
+            <DockPanel Margin="8">
+                <Grid DockPanel.Dock="Top" ColumnDefinitions="48,48,58,48,70,*" Margin="0,0,0,4">
+                    <TextBlock Classes="mono" Opacity="0.6" Text="Word" />
+                    <TextBlock Grid.Column="1" Classes="mono" Opacity="0.6" Text="dB*" />
+                    <TextBlock Grid.Column="2" Classes="mono" Opacity="0.6" Text="Mean" />
+                    <TextBlock Grid.Column="3" Classes="mono" Opacity="0.6" Text="Sigma" />
+                    <TextBlock Grid.Column="4" Classes="mono" Opacity="0.6" Text="Min-Max" />
+                </Grid>
+
+                <TextBlock DockPanel.Dock="Bottom" FontSize="11" Opacity="0.5" TextWrapping="Wrap"
+                           Margin="0,6,0,0"
+                           Text="* nominal gain from the data sheet formula. 'limit' means a sample touched 0 or 255, so the mean is biased." />
+
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Rows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CalibrationRow">
+                                <Grid ColumnDefinitions="48,48,58,48,70,*">
+                                    <TextBlock Classes="mono" Text="{Binding WordText}" />
+                                    <TextBlock Grid.Column="1" Classes="mono" Text="{Binding GainText}" />
+                                    <TextBlock Grid.Column="2" Classes="mono" Text="{Binding MeanText}" />
+                                    <TextBlock Grid.Column="3" Classes="mono" Text="{Binding StdDevText}" />
+                                    <TextBlock Grid.Column="4" Classes="mono" Text="{Binding MinMaxText}" />
+                                    <TextBlock Grid.Column="5" Classes="mono warn" Text="{Binding FlagText}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Characteristic -->
+        <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="16" Margin="12,8,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Width="10" Height="10" CornerRadius="2" Background="#8BD17C"
+                            VerticalAlignment="Center" />
+                    <TextBlock Classes="label" Text="Low range" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Width="10" Height="10" CornerRadius="2" Background="#C792EA"
+                            VerticalAlignment="Center" />
+                    <TextBlock Classes="label" Text="High range" />
+                </StackPanel>
+            </StackPanel>
+
+            <sp:AvaPlot x:Name="Plot" />
+        </DockPanel>
+
+    </DockPanel>
+</Window>

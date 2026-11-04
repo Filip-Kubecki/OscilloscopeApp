@@ -34,11 +34,10 @@
             <StackPanel IsEnabled="{Binding CanEdit}" Spacing="6">
                 <Grid ColumnDefinitions="52,*">
                     <TextBlock Classes="label" Text="Gain"
-                               ToolTip.Tip="Raw AD8370 gain word with the range bit. Conversion to dB is not defined yet." />
+                               ToolTip.Tip="AD8370 gain word: 0-127 low range, 128-255 high range (bit 7 selects the range)." />
                     <NumericUpDown Grid.Column="1" Value="{Binding Gain}"
-                                   Minimum="0" Maximum="511" Increment="1" FormatString="0" />
+                                   Minimum="0" Maximum="255" Increment="1" FormatString="0" />
                 </Grid>
-
                 <Grid ColumnDefinitions="52,*">
                     <TextBlock Classes="label" Text="Offset"
                                ToolTip.Tip="MCP4822 code, 0 to 4095." />

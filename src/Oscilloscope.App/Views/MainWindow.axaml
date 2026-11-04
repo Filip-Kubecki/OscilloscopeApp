@@ -28,25 +28,55 @@
             <Setter Property="Background" Value="#F85149" />
         </Style>
 
-        <!-- Compact controls -->
+        <!-- Every control has the same fixed height, so rows line up -->
         <Style Selector="Button">
-            <Setter Property="MinHeight" Value="26" />
-            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="ToggleButton">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="SplitButton">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="ComboBox">
-            <Setter Property="MinHeight" Value="26" />
-            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="NumericUpDown">
-            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="NumericUpDown /template/ ButtonSpinner">
+            <Setter Property="MinHeight" Value="0" />
         </Style>
         <Style Selector="NumericUpDown /template/ TextBox">
-            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
+
         <Style Selector="TextBlock.label">
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Opacity" Value="0.8" />
             <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.info">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Opacity" Value="0.6" />
         </Style>
 
         <!-- "Advanced" buttons in the side panel; highlighted while their overlay is open -->
@@ -69,24 +99,24 @@
         </Border>
 
         <!-- Top bar: the panel toggle sits on the right edge -->
-        <DockPanel DockPanel.Dock="Top" Margin="8">
+        <DockPanel DockPanel.Dock="Top" Margin="8,6">
 
             <ToggleButton DockPanel.Dock="Right"
                           IsChecked="{Binding IsPanelOpen, Mode=TwoWay}"
                           ToolTip.Tip="Settings panel"
-                          Padding="10,6"
-                          VerticalAlignment="Center">
+                          Width="40">
                 <PathIcon Data="M3,5H21V7H3Z M3,11H21V13H3Z M3,17H21V19H3Z"
                           Width="16" Height="16" />
             </ToggleButton>
 
-            <StackPanel Orientation="Horizontal" Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
 
-                <StackPanel Orientation="Horizontal" Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Border Classes="indicator"
                             Classes.connected="{Binding IsConnected}"
                             Classes.lost="{Binding IsConnectionLost}"
-                            Width="5" CornerRadius="2" />
+                            Width="5" Height="28" CornerRadius="2"
+                            VerticalAlignment="Center" />
 
                     <SplitButton Content="{Binding ConnectButtonText}"
                                  Command="{Binding ToggleConnectionCommand}"
@@ -122,10 +152,15 @@
                 <Button Content="Debug"
                         Click="OnDebugClick"
                         IsEnabled="{Binding IsConnected}" />
+                <Button x:Name="SaveButton"
+                        Content="Save"
+                        Click="OnSaveClick"
+                        IsEnabled="False"
+                        ToolTip.Tip="Save the samples visible on the plot to a CSV file" />
             </StackPanel>
         </DockPanel>
 
-        <!-- Side panel: a fixed element with the channels and the trigger's Advanced button -->
+        <!-- Side panel: a fixed element with the channels and the trigger block -->
         <Border DockPanel.Dock="Right"
                 IsVisible="{Binding IsPanelOpen}"
                 Width="260"
@@ -149,22 +184,60 @@
                         <views:ChannelBlock DataContext="{Binding Channel1}" />
                         <views:ChannelBlock DataContext="{Binding Channel2}" />
 
-                        <!-- Trigger: its main controls are above the plot, the rest is in Advanced -->
+                        <!-- Trigger block: sampling settings; source, edge and level are above the plot -->
                         <Grid>
                             <Border Background="#24242B" BorderBrush="#40808080"
                                     BorderThickness="1" CornerRadius="6" />
-                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="10,8">
-                                <Border Width="4" Height="18" CornerRadius="2"
-                                        Background="#E5484D"
-                                        VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <TextBlock Grid.Column="1" Text="Trigger"
-                                           FontWeight="SemiBold" VerticalAlignment="Center" />
-                                <Button Grid.Column="2"
-                                        Classes="advanced"
+
+                            <StackPanel Margin="10,8,10,10" Spacing="6">
+
+                                <Grid ColumnDefinitions="Auto,Auto,*">
+                                    <Border Width="4" Height="18" CornerRadius="2"
+                                            Background="#E5484D"
+                                            VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Grid.Column="1" Text="Trigger"
+                                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Classes="info"
+                                               Text="{Binding TriggerSummary}"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+
+                                <StackPanel IsEnabled="{Binding CanEditSettings}" Spacing="6">
+                                    <Grid ColumnDefinitions="82,*">
+                                        <TextBlock Classes="label" Text="Length"
+                                                   ToolTip.Tip="Record length: samples per channel (after decimation)." />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding RecordLength}"
+                                                       Minimum="1" Maximum="{Binding MaxRecordLength}"
+                                                       Increment="1024" FormatString="0" />
+                                    </Grid>
+
+                                    <Grid ColumnDefinitions="82,*">
+                                        <TextBlock Classes="label" Text="Decimation"
+                                                   ToolTip.Tip="Every Nth sample goes to the record. 1 = every sample." />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding Decimation}"
+                                                       Minimum="1" Maximum="{Binding MaxDecimation}"
+                                                       Increment="1" FormatString="0" />
+                                    </Grid>
+
+                                    <Grid ColumnDefinitions="82,*">
+                                        <TextBlock Classes="label" Text="Hysteresis"
+                                                   ToolTip.Tip="ADC codes. Set to 3 automatically on connect." />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding TriggerHysteresis}"
+                                                       Minimum="0" Maximum="255" Increment="1"
+                                                       FormatString="0" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <TextBlock Classes="info" Text="{Binding SampleRateText}" />
+                                <TextBlock Classes="info" Text="{Binding RecordDurationText}" />
+
+                                <Button Classes="advanced"
                                         Classes.active="{Binding IsTriggerAdvancedOpen}"
                                         Content="‹ Advanced"
                                         Command="{Binding ToggleTriggerAdvancedCommand}" />
-                            </Grid>
+                            </StackPanel>
                         </Grid>
 
                     </StackPanel>
@@ -179,17 +252,18 @@
                     Background="#1E1E24"
                     BorderBrush="#40808080"
                     BorderThickness="0,0,0,1"
-                    Padding="8,4">
+                    Padding="8,5">
                 <StackPanel Orientation="Horizontal" Spacing="16"
+                            VerticalAlignment="Center"
                             IsEnabled="{Binding CanEditSettings}">
 
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <Border Width="4" Height="18" CornerRadius="2"
                                 Background="#E5484D" VerticalAlignment="Center" />
                         <TextBlock Text="Trigger" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <TextBlock Classes="label" Text="Source" />
                         <ComboBox SelectedIndex="{Binding TriggerSourceIndex}" Width="84">
                             <ComboBoxItem Content="CH1" />
@@ -197,7 +271,7 @@
                         </ComboBox>
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <TextBlock Classes="label" Text="Edge" />
                         <ComboBox SelectedIndex="{Binding TriggerEdgeIndex}" Width="104">
                             <ComboBoxItem Content="Rising" />
@@ -206,7 +280,7 @@
                         </ComboBox>
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <TextBlock Classes="label" Text="Level" />
                         <NumericUpDown Value="{Binding TriggerLevel}"
                                        Minimum="0" Maximum="255" Increment="1"
@@ -214,7 +288,7 @@
                                        ToolTip.Tip="ADC code, 0 to 255. You can also drag the red line on the plot." />
                     </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <TextBlock Classes="label" Text="Mode" />
                         <ComboBox SelectedIndex="0" IsEnabled="False" Width="104"
                                   ToolTip.Tip="Available when the firmware supports it"
@@ -255,49 +329,20 @@
                                            FontWeight="SemiBold" VerticalAlignment="Center" />
                             </Grid>
 
-                            <StackPanel IsEnabled="{Binding CanEditSettings}" Spacing="6">
-                                <Grid ColumnDefinitions="112,*">
-                                    <TextBlock Classes="label" Text="Record length"
-                                               ToolTip.Tip="Samples per channel (after decimation)." />
-                                    <NumericUpDown Grid.Column="1" Value="{Binding RecordLength}"
-                                                   Minimum="1" Maximum="{Binding MaxRecordLength}"
-                                                   Increment="1024" FormatString="0" />
-                                </Grid>
+                            <Grid ColumnDefinitions="90,*" IsEnabled="{Binding CanEditSettings}">
+                                <TextBlock Classes="label" Text="Pretrigger"
+                                           ToolTip.Tip="Samples kept from before the trigger. You can also drag the grey line on the plot." />
+                                <NumericUpDown Grid.Column="1" Value="{Binding Pretrigger}"
+                                               Minimum="0" Maximum="{Binding MaxPretrigger}"
+                                               Increment="256" FormatString="0" />
+                            </Grid>
 
-                                <Grid ColumnDefinitions="112,*">
-                                    <TextBlock Classes="label" Text="Decimation"
-                                               ToolTip.Tip="Every Nth sample goes to the record. 1 = every sample." />
-                                    <NumericUpDown Grid.Column="1" Value="{Binding Decimation}"
-                                                   Minimum="1" Maximum="{Binding MaxDecimation}"
-                                                   Increment="1" FormatString="0" />
-                                </Grid>
-
-                                <Grid ColumnDefinitions="112,*">
-                                    <TextBlock Classes="label" Text="Pretrigger"
-                                               ToolTip.Tip="Samples kept from before the trigger. You can also drag the grey line on the plot." />
-                                    <NumericUpDown Grid.Column="1" Value="{Binding Pretrigger}"
-                                                   Minimum="0" Maximum="{Binding MaxPretrigger}"
-                                                   Increment="256" FormatString="0" />
-                                </Grid>
-
-                                <Grid ColumnDefinitions="112,*">
-                                    <TextBlock Classes="label" Text="Hysteresis"
-                                               ToolTip.Tip="ADC codes. Set to 3 automatically on connect." />
-                                    <NumericUpDown Grid.Column="1" Value="{Binding TriggerHysteresis}"
-                                                   Minimum="0" Maximum="255" Increment="1"
-                                                   FormatString="0" />
-                                </Grid>
-                            </StackPanel>
-
-                            <Grid ColumnDefinitions="112,*">
+                            <Grid ColumnDefinitions="90,*">
                                 <TextBlock Classes="label" Text="Holdoff" />
                                 <NumericUpDown Grid.Column="1" IsEnabled="False"
                                                ToolTip.Tip="Available when the firmware supports it"
                                                ToolTip.ShowOnDisabled="True" />
                             </Grid>
-
-                            <TextBlock Text="{Binding SampleRateText}" Opacity="0.7" Margin="0,4,0,0" />
-                            <TextBlock Text="{Binding RecordDurationText}" Opacity="0.7" />
                         </StackPanel>
 
                         <!-- Channels: advanced -->

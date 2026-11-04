@@ -726,6 +726,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>Lets other windows (calibration) report an error from the shared device connection.</summary>
+    public void ReportDeviceError(Exception ex) => HandleError(ex); 
+    
     private void HandleError(Exception ex)
     {
         Status = ex switch

@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -23,22 +24,21 @@ public partial class MainWindow : Window
 
     private enum DragTarget { None, TriggerLevel, Pretrigger }
 
-    /// <summary>Unit of the time axis: values on the axis are seconds multiplied by <see cref="Scale"/>.</summary>
-    private readonly record struct TimeUnit(double Scale, string Suffix);
+    /// <summary>A unit of the time axis: the axis itself is in nanoseconds, labels are value / Divisor.</summary>
+    private readonly record struct TimeUnit(double Divisor, string Suffix);
 
     private MainViewModel? _viewModel;
     private DebugWindow? _debugWindow;
 
-    // Time axis: the unit follows the length of the record.
+    // The X axis is in nanoseconds. The unit of the labels follows the visible range.
     private double _periodSeconds = 10e-9;
-    private TimeUnit _unit = new(1e9, "ns");
-    private double _periodUnits = 10; // time between samples, in axis units
+    private double _periodNs = 10; // time between samples
     private uint _lastSamples;
 
     private ScottPlot.Plottables.HorizontalLine? _triggerLine;
     private ScottPlot.Plottables.VerticalLine? _pretriggerLine;
     private double? _triggerLevelShown;
-    private double? _pretriggerShown; // axis units
+    private double? _pretriggerShown; // axis units (ns)
     private DragTarget _drag = DragTarget.None;
 
     public MainWindow()
@@ -67,11 +67,43 @@ public partial class MainWindow : Window
         plot.Axes.Color(ScottPlot.Color.FromHex("#D0D0D0"));
         plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#2E2E36");
 
-        // Time on the bottom axis: values carry the unit.
+        // Time on the bottom axis: the unit follows the visible range (ns, µs, ms, s).
         plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic
         {
-            LabelFormatter = value => $"{value:0.###} {_unit.Suffix}",
+            LabelFormatter = FormatTimeTick,
         };
+
+        // ADC codes on the left axis: whole numbers only, so the ticks go down to a step of 1 when zoomed in.
+        plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic
+        {
+            IntegerTicksOnly = true,
+            LabelFormatter = value => value.ToString("0", CultureInfo.InvariantCulture),
+        };
+    }
+
+    // --- Time axis -----------------------------------------------------
+
+    /// <summary>Largest unit for which the visible range is at least two of it.</summary>
+    private static TimeUnit UnitForSpan(double spanNs) => spanNs switch
+    {
+        >= 2e9 => new TimeUnit(1e9, "s"),
+        >= 2e6 => new TimeUnit(1e6, "ms"),
+        >= 2e3 => new TimeUnit(1e3, "µs"),
+        _ => new TimeUnit(1, "ns"),
+    };
+
+    /// <summary>
+    /// Label of a tick: all labels of one render share the unit chosen from the visible range,
+    /// and the value is rounded, so floating point noise never reaches the screen.
+    /// </summary>
+    private string FormatTimeTick(double ns)
+    {
+        var limits = Plot.Plot.Axes.GetLimits();
+        var unit = UnitForSpan(Math.Abs(limits.Right - limits.Left));
+
+        double value = Math.Round(ns / unit.Divisor, 6);
+        value = value == 0 ? 0 : value; // no "-0"
+        return $"{value.ToString("0.######", CultureInfo.InvariantCulture)} {unit.Suffix}";
     }
 
     private void OnDebugClick(object? sender, RoutedEventArgs e)
@@ -95,22 +127,14 @@ public partial class MainWindow : Window
         _debugWindow.Show(this);
     }
 
-    private static TimeUnit ChooseUnit(double spanSeconds) => spanSeconds switch
-    {
-        >= 1 => new TimeUnit(1, "s"),
-        >= 1e-3 => new TimeUnit(1e3, "ms"),
-        >= 1e-6 => new TimeUnit(1e6, "µs"),
-        _ => new TimeUnit(1e9, "ns"),
-    };
-
     /// <summary>
     /// Sets the view to the whole record and restricts zoom and pan to the record
-    /// (X: 0..last sample in axis units, Y: 0..255). Called only when the record length,
-    /// the sample period or the unit changes, so the user's zoom is kept in Run mode.
+    /// (X: 0..last sample in ns, Y: 0..255). Called only when the record length or the sample
+    /// period changes, so the user's zoom is kept in Run mode.
     /// </summary>
     private void ApplyLimits(uint sampleCount)
     {
-        double right = sampleCount > 1 ? (sampleCount - 1) * _periodUnits : 1;
+        double right = sampleCount > 1 ? (sampleCount - 1) * _periodNs : 1;
         var limits = new ScottPlot.AxisLimits(left: 0, right: right, bottom: 0, top: 255);
 
         var axes = Plot.Plot.Axes;
@@ -170,7 +194,7 @@ public partial class MainWindow : Window
         _triggerLine.LinePattern = ScottPlot.LinePattern.Dashed;
     }
 
-    /// <summary>Draws the pretrigger line at the given position in axis units (time).</summary>
+    /// <summary>Draws the pretrigger line at the given position in axis units (ns).</summary>
     private void SetPretriggerLine(double? position)
     {
         if (_pretriggerLine is not null)
@@ -205,7 +229,7 @@ public partial class MainWindow : Window
         if (_drag == DragTarget.Pretrigger)
             pretrigger = _pretriggerShown;
         else if (_viewModel?.AppliedPretrigger is { } samples)
-            pretrigger = samples * _periodUnits;
+            pretrigger = samples * _periodNs;
         else
             pretrigger = null;
 
@@ -299,8 +323,8 @@ public partial class MainWindow : Window
         {
             // The X axis is time: convert it to a whole number of samples.
             double maxSamples = _viewModel is null ? 0 : (double)_viewModel.MaxPretrigger;
-            double samples = Math.Round(Math.Clamp(coordinates.X / _periodUnits, 0, maxSamples));
-            SetPretriggerLine(samples * _periodUnits);
+            double samples = Math.Round(Math.Clamp(coordinates.X / _periodNs, 0, maxSamples));
+            SetPretriggerLine(samples * _periodNs);
             if (_viewModel is not null)
                 _viewModel.Pretrigger = (decimal)samples; // the numeric field follows live
         }
@@ -340,17 +364,12 @@ public partial class MainWindow : Window
     private void OnRecordReceived(AcquisitionRecord record, double samplePeriod)
     {
         uint samples = record.Header.SamplesPerChannel;
-        var unit = ChooseUnit(samples * samplePeriod);
-        double periodUnits = samplePeriod * unit.Scale;
 
-        bool axisChanged = samples != _lastSamples
-                           || samplePeriod != _periodSeconds
-                           || unit != _unit;
+        bool axisChanged = samples != _lastSamples || samplePeriod != _periodSeconds;
 
         _lastSamples = samples;
         _periodSeconds = samplePeriod;
-        _unit = unit;
-        _periodUnits = periodUnits;
+        _periodNs = samplePeriod * 1e9;
 
         Plot.Plot.Clear();
         _triggerLine = null;
@@ -362,7 +381,7 @@ public partial class MainWindow : Window
                 continue;
 
             double[] ys = Array.ConvertAll(record.ExtractChannel(channel), b => (double)b);
-            var signal = Plot.Plot.Add.Signal(ys, periodUnits);
+            var signal = Plot.Plot.Add.Signal(ys, _periodNs);
             signal.Color = channel == 1 ? Channel1Color : Channel2Color;
         }
 

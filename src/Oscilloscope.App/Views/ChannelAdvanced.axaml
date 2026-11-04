@@ -29,5 +29,12 @@
 
         <TextBlock Text="Refreshed every 0.5 s while this panel is open."
                    FontSize="11" Opacity="0.5" TextWrapping="Wrap" Margin="0,4,0,0" />
+
+        <Button Content="Calibration..."
+                Click="OnCalibrationClick"
+                IsEnabled="{Binding CanEdit}"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                Margin="0,8,0,0" />
     </StackPanel>
 </UserControl>

@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Oscilloscope.App.ViewModels;
 
 namespace Oscilloscope.App.Views;
 
@@ -8,4 +10,7 @@ public partial class ChannelAdvanced : UserControl
     {
         InitializeComponent();
     }
+
+    private void OnCalibrationClick(object? sender, RoutedEventArgs e) =>
+        (DataContext as ChannelViewModel)?.RequestCalibration();
 }

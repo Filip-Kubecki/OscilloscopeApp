@@ -10,8 +10,8 @@ public partial class ChannelViewModel(
     int number, bool enabled, string colorHex, Action<ChannelViewModel> enabledChanged)
     : ViewModelBase
 {
-    /// <summary>Largest PGA gain word accepted by the UI (AD8370 word + range bit, to be confirmed).</summary>
-    public const decimal MaxGainWord = 511;
+    /// <summary>Largest AD8370 gain word: bit 7 selects the range (0-127 low, 128-255 high), bits 6..0 are the code.</summary>
+    public const decimal MaxGainWord = 255;
 
     /// <summary>Largest DAC code (MCP4822 is a 12-bit DAC).</summary>
     public const decimal MaxOffsetCode = 4095;
@@ -82,9 +82,14 @@ public partial class ChannelViewModel(
     /// <summary>Raised when the user clicks the Advanced button of the block.</summary>
     public event Action<ChannelViewModel>? AdvancedRequested;
 
+    /// <summary>Raised when the user asks for the calibration window of this channel.</summary>
+    public event Action<ChannelViewModel>? CalibrationRequested;
+
     public void RequestSelect() => SelectRequested?.Invoke(this);
 
     public void RequestAdvanced() => AdvancedRequested?.Invoke(this);
+
+    public void RequestCalibration() => CalibrationRequested?.Invoke(this);
 
     partial void OnIsEnabledChanged(bool value) => enabledChanged(this);
 }

@@ -4,7 +4,9 @@
              x:Class="Oscilloscope.App.Views.ChannelBlock"
              x:DataType="vm:ChannelViewModel">
 
-    <Grid>
+    <!-- A tap anywhere in the block highlights it (selects the channel) -->
+    <Grid Tapped="OnTapped">
+
         <!-- Card background -->
         <Border Background="#24242B" BorderBrush="#40808080" BorderThickness="1" CornerRadius="6" />
 
@@ -14,43 +16,41 @@
         <Border BorderBrush="{Binding Accent}" BorderThickness="2" CornerRadius="6"
                 IsVisible="{Binding IsSelected}" IsHitTestVisible="False" />
 
-        <StackPanel>
+        <StackPanel Margin="10,8,10,10" Spacing="6">
 
-            <!-- Header: always visible, a click selects the block -->
-            <Border Background="Transparent" Cursor="Hand" Padding="10,8"
-                    Tapped="OnHeaderTapped">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Border Width="4" Height="18" CornerRadius="2"
-                            Background="{Binding Accent}"
-                            VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBlock Grid.Column="1" Text="{Binding Title}"
-                               FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <CheckBox Grid.Column="2" Content="Enabled"
-                              IsChecked="{Binding IsEnabled}"
-                              IsEnabled="{Binding CanEdit}" />
+            <!-- Header -->
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Width="4" Height="18" CornerRadius="2"
+                        Background="{Binding Accent}"
+                        VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBlock Grid.Column="1" Text="{Binding Title}"
+                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                <CheckBox Grid.Column="2" Content="Enabled"
+                          IsChecked="{Binding IsEnabled}"
+                          IsEnabled="{Binding CanEdit}" />
+            </Grid>
+
+            <!-- Settings: label and field in one row -->
+            <StackPanel IsEnabled="{Binding CanEdit}" Spacing="6">
+                <Grid ColumnDefinitions="52,*">
+                    <TextBlock Classes="label" Text="Gain"
+                               ToolTip.Tip="Raw AD8370 gain word with the range bit. Conversion to dB is not defined yet." />
+                    <NumericUpDown Grid.Column="1" Value="{Binding Gain}"
+                                   Minimum="0" Maximum="511" Increment="1" FormatString="0" />
                 </Grid>
-            </Border>
 
-            <!-- Body: only for the selected block -->
-            <StackPanel IsVisible="{Binding IsSelected}" Spacing="8" Margin="10,0,10,10">
-
-                <StackPanel IsEnabled="{Binding CanEdit}" Spacing="8">
-                    <TextBlock Text="Gain (raw word)" />
-                    <NumericUpDown Value="{Binding Gain}"
-                                   Minimum="0" Maximum="511" Increment="1" FormatString="0"
-                                   ToolTip.Tip="Raw AD8370 gain word with the range bit. Conversion to dB is not defined yet." />
-
-                    <TextBlock Text="Offset (DAC code)" />
-                    <NumericUpDown Value="{Binding Offset}"
-                                   Minimum="0" Maximum="4095" Increment="16" FormatString="0"
-                                   ToolTip.Tip="MCP4822 code, 0 to 4095." />
-                </StackPanel>
-
-                <Button Classes="advanced"
-                        Classes.active="{Binding IsAdvancedOpen}"
-                        Content="‹ Advanced"
-                        Click="OnAdvancedClick" />
+                <Grid ColumnDefinitions="52,*">
+                    <TextBlock Classes="label" Text="Offset"
+                               ToolTip.Tip="MCP4822 code, 0 to 4095." />
+                    <NumericUpDown Grid.Column="1" Value="{Binding Offset}"
+                                   Minimum="0" Maximum="4095" Increment="16" FormatString="0" />
+                </Grid>
             </StackPanel>
+
+            <Button Classes="advanced"
+                    Classes.active="{Binding IsAdvancedOpen}"
+                    Content="‹ Advanced"
+                    Click="OnAdvancedClick" />
         </StackPanel>
     </Grid>
 </UserControl>

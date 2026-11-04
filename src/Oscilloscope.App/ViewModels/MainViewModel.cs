@@ -11,8 +11,18 @@ namespace Oscilloscope.App.ViewModels;
 
 public partial class MainViewModel : ViewModelBase, IDisposable
 {
+    /// <summary>Time between samples without decimation (100 MHz ADC clock, docs/protocol.md section 5.1).</summary>
+    private const double BaseSamplePeriod = 10e-9;
+
+    /// <summary>Hysteresis (ADC codes) the application keeps by default. Applied on connect when the device differs.</summary>
+    private const byte DefaultHysteresis = 3;
+
+    /// <summary>How often the channel status (applied gain, offset, flags) is read while an overlay is open.</summary>
+    private static readonly TimeSpan StatusPollInterval = TimeSpan.FromMilliseconds(500);
+
     private DeviceClient? _device;
     private CancellationTokenSource? _acquisitionCts;
+    private CancellationTokenSource? _statusCts;
 
     // Settings queued while an acquisition is running (the latest one wins).
     private readonly object _pendingLock = new();
@@ -27,8 +37,11 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>The device refused a configuration. The message is meant for the status bar.</summary>
     private sealed class ConfigRejectedException(string message) : Exception(message);
 
-    /// <summary>Raised on the UI thread after a record is received. The view draws the plot.</summary>
-    public event Action<AcquisitionRecord>? RecordReceived;
+    /// <summary>
+    /// Raised on the UI thread after a record is received. The second argument is the time between
+    /// two samples of the record in seconds (10 ns times the decimation). The view draws the plot.
+    /// </summary>
+    public event Action<AcquisitionRecord, double>? RecordReceived;
 
     public ChannelViewModel Channel1 { get; }
     public ChannelViewModel Channel2 { get; }
@@ -99,7 +112,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             AdvancedSection = 0;
     }
 
-    /// <summary>Which channel block is open in the side panel (1 or 2). The trigger block is always open.</summary>
+    /// <summary>The highlighted channel block in the side panel (1 or 2). Both blocks are always open.</summary>
     [ObservableProperty]
     public partial int SelectedChannel { get; set; } = 1;
 
@@ -130,6 +143,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     {
         Channel1.IsAdvancedOpen = value == 2;
         Channel2.IsAdvancedOpen = value == 3;
+
+        // A channel overlay just opened: show fresh values right away, polling takes over from here.
+        if (value >= 2 && _device is { } device)
+            _ = RefreshChannelStatusSafeAsync(device);
     }
 
     [RelayCommand]
@@ -176,7 +193,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial string RecordInfo { get; set; } = "";
 
-    // --- Settings panel ------------------------------------------------
+    // --- Settings ------------------------------------------------------
 
     /// <summary>Index into the source list: 0 = channel 1, 1 = channel 2.</summary>
     [ObservableProperty]
@@ -193,7 +210,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     public partial decimal TriggerLevel { get; set; } = 128;
 
     [ObservableProperty]
-    public partial decimal TriggerHysteresis { get; set; } = 2;
+    public partial decimal TriggerHysteresis { get; set; } = DefaultHysteresis;
 
     /// <summary>Samples kept from before the trigger, per channel.</summary>
     [ObservableProperty]
@@ -202,9 +219,32 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Record length in samples per channel.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MaxPretrigger))]
+    [NotifyPropertyChangedFor(nameof(RecordDurationText))]
     public partial decimal RecordLength { get; set; } = 65536;
 
-    /// <summary>One-line description shown in the header of the trigger block.</summary>
+    /// <summary>Only every Nth sample goes to the record (1 = no decimation).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SampleRateText))]
+    [NotifyPropertyChangedFor(nameof(RecordDurationText))]
+    public partial decimal Decimation { get; set; } = 1;
+
+    /// <summary>
+    /// Assumed upper limit of the decimation field. The register is 32-bit and the register map
+    /// does not state a limit, so the device decides (BAD_VALUE ends up on the status bar).
+    /// </summary>
+    public decimal MaxDecimation => 1_000_000;
+
+    /// <summary>Effective sample rate for the decimation typed in the panel.</summary>
+    public string SampleRateText =>
+        $"Sample rate: {FormatRate(1.0 / (BaseSamplePeriod * DecimationFactor))}";
+
+    /// <summary>Length in time of a record for the length and decimation typed in the panel.</summary>
+    public string RecordDurationText =>
+        $"Record time: {FormatDuration((double)RecordLength * DecimationFactor * BaseSamplePeriod)}";
+
+    private double DecimationFactor => Math.Max(1.0, (double)Decimation);
+
+    /// <summary>One-line description of the trigger settings.</summary>
     public string TriggerSummary
     {
         get
@@ -252,6 +292,23 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Connecting or disconnecting is blocked during an acquisition.</summary>
     public bool CanToggleConnection => !IsRunning && !IsBusy;
 
+    // --- Formatting helpers --------------------------------------------
+
+    private static string FormatRate(double hertz) => hertz switch
+    {
+        >= 1e6 => $"{hertz / 1e6:0.###} MHz",
+        >= 1e3 => $"{hertz / 1e3:0.###} kHz",
+        _ => $"{hertz:0.###} Hz",
+    };
+
+    private static string FormatDuration(double seconds) => seconds switch
+    {
+        >= 1 => $"{seconds:0.###} s",
+        >= 1e-3 => $"{seconds * 1e3:0.###} ms",
+        >= 1e-6 => $"{seconds * 1e6:0.###} µs",
+        _ => $"{seconds * 1e9:0.###} ns",
+    };
+
     // --- Connection ----------------------------------------------------
 
     [RelayCommand]
@@ -279,9 +336,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             _device = device;
             _lastApplied = config; // assumption: pending == active right after connecting
             ShowConfig(config);
+            await RefreshChannelStatusAsync(device);
             IsConnected = true;
             OnPropertyChanged(nameof(Device));
             Status = $"Connected. DEVICE_ID = 0x{id:X8}, protocol v{version}.";
+            StartStatusPolling(device);
+
+            if (config.Trigger.Hysteresis != DefaultHysteresis)
+                await ApplyDefaultHysteresisAsync(device, config);
         }
         catch (Exception ex)
         {
@@ -294,18 +356,103 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>The device holds a different hysteresis than the default: stop, write it and COMMIT.</summary>
+    private async Task ApplyDefaultHysteresisAsync(DeviceClient device, CaptureConfig config)
+    {
+        try
+        {
+            var trigger = config.Trigger with { Hysteresis = DefaultHysteresis };
+            await device.SendCommandAsync(Registers.CommandStop);
+            await ApplyConfigAsync(device, config with { Trigger = trigger });
+            Status += $" Hysteresis set to {DefaultHysteresis}.";
+        }
+        catch (Exception ex)
+        {
+            HandleError(ex);
+        }
+    }
+
     private async Task DisconnectAsync()
     {
+        StopStatusPolling();
         if (_device is not null)
             await _device.DisposeAsync();
         _device = null;
         _lastApplied = null;
         ClearPending();
+        Channel1.AppliedStatus = null;
+        Channel2.AppliedStatus = null;
         IsConnected = false;
         IsConnectionLost = false;
         AppliedTriggerLevel = null;
         AppliedPretrigger = null;
         Status = "Disconnected.";
+    }
+
+    // --- Channel status (applied gain/offset, flags) --------------------
+
+    /// <summary>Reads applied gain, applied offset and flags of both channels.</summary>
+    private async Task RefreshChannelStatusAsync(DeviceClient device)
+    {
+        Channel1.AppliedStatus = await device.ReadChannelStatusAsync(1);
+        Channel2.AppliedStatus = await device.ReadChannelStatusAsync(2);
+    }
+
+    private async Task RefreshChannelStatusSafeAsync(DeviceClient device)
+    {
+        try
+        {
+            await RefreshChannelStatusAsync(device);
+        }
+        catch (Exception ex)
+        {
+            if (ReferenceEquals(device, _device))
+                HandleError(ex);
+        }
+    }
+
+    private void StartStatusPolling(DeviceClient device)
+    {
+        StopStatusPolling();
+        _statusCts = new CancellationTokenSource();
+        _ = PollChannelStatusAsync(device, _statusCts.Token);
+    }
+
+    private void StopStatusPolling()
+    {
+        _statusCts?.Cancel();
+        _statusCts?.Dispose();
+        _statusCts = null;
+    }
+
+    /// <summary>
+    /// Reads the channel status every 0.5 s, but only while a channel overlay is open.
+    /// Cancellation is checked only between exchanges, so it never cuts the connection mid-frame.
+    /// </summary>
+    private async Task PollChannelStatusAsync(DeviceClient device, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(StatusPollInterval, token);
+
+                if (!ReferenceEquals(device, _device))
+                    return;
+                if (AdvancedSection < 2)
+                    continue;
+
+                await RefreshChannelStatusAsync(device);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (!token.IsCancellationRequested && ReferenceEquals(device, _device))
+                HandleError(ex);
+        }
     }
 
     // --- Settings ------------------------------------------------------
@@ -328,6 +475,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(MaxRecordLength));
         RecordLength = config.RecordLength;
         Pretrigger = config.Pretrigger;
+        Decimation = Math.Max(1u, config.Decimation);
 
         TriggerSourceIndex = (int)t.Source;
         TriggerEdgeIndex = (int)t.Edge;
@@ -351,6 +499,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
         uint length = (uint)Math.Clamp(RecordLength, 1m, MaxRecordLength);
         uint pretrigger = (uint)Math.Clamp(Pretrigger, 0m, (decimal)(length - 1));
+        uint decimation = (uint)Math.Clamp(Decimation, 1m, MaxDecimation);
         uint mask = (Channel1.IsEnabled ? 0x01u : 0u) | (Channel2.IsEnabled ? 0x02u : 0u);
 
         var trigger = new TriggerConfig(
@@ -360,7 +509,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             (byte)Math.Clamp(TriggerHysteresis, 0, 255));
 
         config = new CaptureConfig(
-            trigger, pretrigger, length, mask,
+            trigger, pretrigger, length, decimation, mask,
             ToChannelConfig(Channel1), ToChannelConfig(Channel2));
         return true;
     }
@@ -430,6 +579,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         var applied = await device.ReadCaptureConfigAsync();
         _lastApplied = applied;
         ShowConfig(applied);
+        await RefreshChannelStatusAsync(device);
     }
 
     private async Task RestoreLastAppliedAsync(DeviceClient device)
@@ -453,7 +603,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var c = await device.ReadCaptureConfigAsync();
             var t = c.Trigger;
             return $"Rejected values: state={state}, src={t.Source}, edge={t.Edge}, level={t.Level}, " +
-                   $"hyst={t.Hysteresis}, len={c.RecordLength}, pre={c.Pretrigger}, mask=0x{c.ChannelMask:X2}, " +
+                   $"hyst={t.Hysteresis}, len={c.RecordLength}, pre={c.Pretrigger}, dec={c.Decimation}, " +
+                   $"mask=0x{c.ChannelMask:X2}, " +
                    $"ch1 gain={c.Channel1.Gain} offset={c.Channel1.Offset}, " +
                    $"ch2 gain={c.Channel2.Gain} offset={c.Channel2.Offset}.";
         }
@@ -540,9 +691,14 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                     return;
                 }
 
+                // The configuration applied before this acquisition decides the sample period.
+                double decimation = Math.Max(1u, _lastApplied?.Decimation ?? 1u);
+                double samplePeriod = decimation * BaseSamplePeriod;
+
                 var h = record.Header;
-                RecordInfo = $"Record #{h.RecordId}, {h.SamplesPerChannel} samples/channel";
-                RecordReceived?.Invoke(record);
+                string duration = FormatDuration(h.SamplesPerChannel * samplePeriod);
+                RecordInfo = $"Record #{h.RecordId}, {h.SamplesPerChannel} samples/channel, {duration}";
+                RecordReceived?.Invoke(record, samplePeriod);
                 Status = continuous ? "Continuous acquisition." : "Done.";
 
                 // Limit the refresh rate to about 30 frames per second.
@@ -585,6 +741,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         // DeviceClient closes the socket itself after a transport or protocol error.
         if (_device is { IsConnected: false })
         {
+            StopStatusPolling();
             _ = _device.DisposeAsync();
             _device = null;
             IsConnected = false;
@@ -594,6 +751,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        StopStatusPolling();
         _acquisitionCts?.Cancel();
         _ = _device?.DisposeAsync();
     }

@@ -12,7 +12,7 @@ public partial class ChannelBlock : UserControl
         InitializeComponent();
     }
 
-    private void OnHeaderTapped(object? sender, TappedEventArgs e) =>
+    private void OnTapped(object? sender, TappedEventArgs e) =>
         (DataContext as ChannelViewModel)?.RequestSelect();
 
     private void OnAdvancedClick(object? sender, RoutedEventArgs e) =>

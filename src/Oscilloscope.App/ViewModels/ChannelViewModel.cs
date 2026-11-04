@@ -1,6 +1,7 @@
 using System;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Oscilloscope.Core.Device;
 
 namespace Oscilloscope.App.ViewModels;
 
@@ -24,7 +25,7 @@ public partial class ChannelViewModel(
     [ObservableProperty]
     public partial bool IsEnabled { get; set; } = enabled;
 
-    /// <summary>The block is open (highlighted) in the side panel.</summary>
+    /// <summary>The block is highlighted in the side panel.</summary>
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
@@ -44,7 +45,38 @@ public partial class ChannelViewModel(
     [ObservableProperty]
     public partial decimal Offset { get; set; }
 
-    /// <summary>Raised when the user clicks the block header.</summary>
+    // --- Read-only state from the device -------------------------------
+
+    /// <summary>What the device reports as applied (null when unknown, e.g. not connected).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AppliedGainText))]
+    [NotifyPropertyChangedFor(nameof(AppliedOffsetText))]
+    [NotifyPropertyChangedFor(nameof(OverrangeText))]
+    [NotifyPropertyChangedFor(nameof(IsOverrange))]
+    [NotifyPropertyChangedFor(nameof(BusyText))]
+    public partial ChannelStatus? AppliedStatus { get; set; }
+
+    public string AppliedGainText => AppliedStatus is { } s
+        ? $"Applied gain: {s.AppliedGain} (0x{s.AppliedGain:X2})"
+        : "Applied gain: -";
+
+    public string AppliedOffsetText => AppliedStatus is { } s
+        ? $"Applied offset: {s.AppliedOffset} (0x{s.AppliedOffset:X3})"
+        : "Applied offset: -";
+
+    public bool IsOverrange => AppliedStatus?.Overrange == true;
+
+    public string OverrangeText => AppliedStatus is { } s
+        ? $"Overrange: {(s.Overrange ? "yes" : "no")}"
+        : "Overrange: -";
+
+    public string BusyText => AppliedStatus is { } s
+        ? $"PGA busy: {(s.PgaBusy ? "yes" : "no")}, DAC busy: {(s.DacBusy ? "yes" : "no")}"
+        : "PGA busy: -, DAC busy: -";
+
+    // --- Events --------------------------------------------------------
+
+    /// <summary>Raised when the user clicks the block.</summary>
     public event Action<ChannelViewModel>? SelectRequested;
 
     /// <summary>Raised when the user clicks the Advanced button of the block.</summary>

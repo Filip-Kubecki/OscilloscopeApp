@@ -9,6 +9,7 @@
         x:Class="Oscilloscope.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         RequestedThemeVariant="Dark"
+        WindowState="Maximized"
         Width="1150" Height="700"
         Title="Oscilloscope">
 
@@ -25,6 +26,27 @@
         </Style>
         <Style Selector="Border.indicator.lost">
             <Setter Property="Background" Value="#F85149" />
+        </Style>
+
+        <!-- Compact controls -->
+        <Style Selector="Button">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="10,3" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="8,2" />
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="MinHeight" Value="26" />
+        </Style>
+        <Style Selector="NumericUpDown /template/ TextBox">
+            <Setter Property="MinHeight" Value="26" />
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Opacity" Value="0.8" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
         <!-- "Advanced" buttons in the side panel; highlighted while their overlay is open -->
@@ -52,7 +74,7 @@
             <ToggleButton DockPanel.Dock="Right"
                           IsChecked="{Binding IsPanelOpen, Mode=TwoWay}"
                           ToolTip.Tip="Settings panel"
-                          Padding="10,8"
+                          Padding="10,6"
                           VerticalAlignment="Center">
                 <PathIcon Data="M3,5H21V7H3Z M3,11H21V13H3Z M3,17H21V19H3Z"
                           Width="16" Height="16" />
@@ -103,10 +125,10 @@
             </StackPanel>
         </DockPanel>
 
-        <!-- Side panel: a fixed element, the plot takes the remaining space -->
+        <!-- Side panel: a fixed element with the channels and the trigger's Advanced button -->
         <Border DockPanel.Dock="Right"
                 IsVisible="{Binding IsPanelOpen}"
-                Width="290"
+                Width="260"
                 Background="#1E1E24"
                 BorderBrush="#40808080"
                 BorderThickness="1,0,0,0">
@@ -123,146 +145,180 @@
                 <ScrollViewer>
                     <StackPanel Spacing="8">
 
-                        <!-- Trigger block: always open -->
+                        <!-- Both channel blocks are always open; the selected one is highlighted -->
+                        <views:ChannelBlock DataContext="{Binding Channel1}" />
+                        <views:ChannelBlock DataContext="{Binding Channel2}" />
+
+                        <!-- Trigger: its main controls are above the plot, the rest is in Advanced -->
                         <Grid>
                             <Border Background="#24242B" BorderBrush="#40808080"
                                     BorderThickness="1" CornerRadius="6" />
-
-                            <StackPanel>
-                                <Grid ColumnDefinitions="Auto,*" Margin="10,8">
-                                    <Border Width="4" Height="28" CornerRadius="2"
-                                            Background="#E5484D"
-                                            VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="Trigger" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding TriggerSummary}"
-                                                   FontSize="12" Opacity="0.6" />
-                                    </StackPanel>
-                                </Grid>
-
-                                <StackPanel Spacing="8" Margin="10,0,10,10">
-
-                                    <StackPanel IsEnabled="{Binding CanEditSettings}" Spacing="8">
-                                        <TextBlock Text="Source" />
-                                        <ComboBox SelectedIndex="{Binding TriggerSourceIndex}"
-                                                  HorizontalAlignment="Stretch">
-                                            <ComboBoxItem Content="Channel 1" />
-                                            <ComboBoxItem Content="Channel 2" />
-                                        </ComboBox>
-
-                                        <TextBlock Text="Edge" />
-                                        <ComboBox SelectedIndex="{Binding TriggerEdgeIndex}"
-                                                  HorizontalAlignment="Stretch">
-                                            <ComboBoxItem Content="Rising" />
-                                            <ComboBoxItem Content="Falling" />
-                                            <ComboBoxItem Content="Both" />
-                                        </ComboBox>
-
-                                        <TextBlock Text="Level (ADC code)" />
-                                        <NumericUpDown Value="{Binding TriggerLevel}"
-                                                       Minimum="0" Maximum="255" Increment="1"
-                                                       FormatString="0" />
-
-                                        <TextBlock Text="Pretrigger (samples)" />
-                                        <NumericUpDown Value="{Binding Pretrigger}"
-                                                       Minimum="0" Maximum="{Binding MaxPretrigger}"
-                                                       Increment="256" FormatString="0" />
-
-                                        <TextBlock Text="Mode" />
-                                        <ComboBox SelectedIndex="0" IsEnabled="False"
-                                                  HorizontalAlignment="Stretch"
-                                                  ToolTip.Tip="Available when the firmware supports it"
-                                                  ToolTip.ShowOnDisabled="True">
-                                            <ComboBoxItem Content="Normal" />
-                                            <ComboBoxItem Content="Auto" />
-                                            <ComboBoxItem Content="Single" />
-                                        </ComboBox>
-                                    </StackPanel>
-
-                                    <Button Classes="advanced"
-                                            Classes.active="{Binding IsTriggerAdvancedOpen}"
-                                            Content="‹ Advanced"
-                                            Command="{Binding ToggleTriggerAdvancedCommand}" />
-                                </StackPanel>
-                            </StackPanel>
+                            <Grid ColumnDefinitions="Auto,*,Auto" Margin="10,8">
+                                <Border Width="4" Height="18" CornerRadius="2"
+                                        Background="#E5484D"
+                                        VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Grid.Column="1" Text="Trigger"
+                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button Grid.Column="2"
+                                        Classes="advanced"
+                                        Classes.active="{Binding IsTriggerAdvancedOpen}"
+                                        Content="‹ Advanced"
+                                        Command="{Binding ToggleTriggerAdvancedCommand}" />
+                            </Grid>
                         </Grid>
-
-                        <!-- Channel blocks: one of them is open -->
-                        <views:ChannelBlock DataContext="{Binding Channel1}" />
-                        <views:ChannelBlock DataContext="{Binding Channel2}" />
 
                     </StackPanel>
                 </ScrollViewer>
             </DockPanel>
         </Border>
 
-        <!-- Plot, with the advanced overlay floating over its right edge (left of the side panel) -->
-        <Grid>
-            <sp:AvaPlot x:Name="Plot" />
+        <DockPanel>
 
-            <Border IsVisible="{Binding IsAdvancedOpen}"
-                    Width="270"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Top"
-                    Margin="0,8,8,8"
-                    Padding="12"
-                    Background="#B31E1E24"
+            <!-- Trigger bar above the plot -->
+            <Border DockPanel.Dock="Top"
+                    Background="#1E1E24"
                     BorderBrush="#40808080"
-                    BorderThickness="1"
-                    CornerRadius="6">
-                <Grid>
+                    BorderThickness="0,0,0,1"
+                    Padding="8,4">
+                <StackPanel Orientation="Horizontal" Spacing="16"
+                            IsEnabled="{Binding CanEditSettings}">
 
-                    <!-- Trigger: advanced -->
-                    <StackPanel IsVisible="{Binding IsTriggerAdvancedOpen}" Spacing="8">
-                        <Grid ColumnDefinitions="Auto,*" Margin="0,0,28,0">
-                            <Border Width="4" Height="18" CornerRadius="2"
-                                    Background="#E5484D"
-                                    VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <TextBlock Grid.Column="1" Text="Trigger - advanced"
-                                       FontWeight="SemiBold" VerticalAlignment="Center" />
-                        </Grid>
-
-                        <StackPanel IsEnabled="{Binding CanEditSettings}" Spacing="8">
-                            <TextBlock Text="Record length (samples)" />
-                            <NumericUpDown Value="{Binding RecordLength}"
-                                           Minimum="1" Maximum="{Binding MaxRecordLength}"
-                                           Increment="1024" FormatString="0" />
-
-                            <TextBlock Text="Hysteresis (ADC code)" />
-                            <NumericUpDown Value="{Binding TriggerHysteresis}"
-                                           Minimum="0" Maximum="255" Increment="1"
-                                           FormatString="0" />
-                        </StackPanel>
-
-                        <TextBlock Text="Decimation" />
-                        <NumericUpDown IsEnabled="False"
-                                       ToolTip.Tip="Not wired up in the app yet"
-                                       ToolTip.ShowOnDisabled="True" />
-
-                        <TextBlock Text="Holdoff (samples)" />
-                        <NumericUpDown IsEnabled="False"
-                                       ToolTip.Tip="Available when the firmware supports it"
-                                       ToolTip.ShowOnDisabled="True" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border Width="4" Height="18" CornerRadius="2"
+                                Background="#E5484D" VerticalAlignment="Center" />
+                        <TextBlock Text="Trigger" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <!-- Channels: advanced -->
-                    <Panel IsVisible="{Binding IsChannel1AdvancedOpen}">
-                        <views:ChannelAdvanced DataContext="{Binding Channel1}" />
-                    </Panel>
-                    <Panel IsVisible="{Binding IsChannel2AdvancedOpen}">
-                        <views:ChannelAdvanced DataContext="{Binding Channel2}" />
-                    </Panel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="label" Text="Source" />
+                        <ComboBox SelectedIndex="{Binding TriggerSourceIndex}" Width="84">
+                            <ComboBoxItem Content="CH1" />
+                            <ComboBoxItem Content="CH2" />
+                        </ComboBox>
+                    </StackPanel>
 
-                    <!-- Close -->
-                    <Button Content="×"
-                            FontSize="16"
-                            Padding="8,0"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Top"
-                            Command="{Binding CloseAdvancedCommand}" />
-                </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="label" Text="Edge" />
+                        <ComboBox SelectedIndex="{Binding TriggerEdgeIndex}" Width="104">
+                            <ComboBoxItem Content="Rising" />
+                            <ComboBoxItem Content="Falling" />
+                            <ComboBoxItem Content="Both" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="label" Text="Level" />
+                        <NumericUpDown Value="{Binding TriggerLevel}"
+                                       Minimum="0" Maximum="255" Increment="1"
+                                       FormatString="0" Width="110"
+                                       ToolTip.Tip="ADC code, 0 to 255. You can also drag the red line on the plot." />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Classes="label" Text="Mode" />
+                        <ComboBox SelectedIndex="0" IsEnabled="False" Width="104"
+                                  ToolTip.Tip="Available when the firmware supports it"
+                                  ToolTip.ShowOnDisabled="True">
+                            <ComboBoxItem Content="Normal" />
+                            <ComboBoxItem Content="Auto" />
+                            <ComboBoxItem Content="Single" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <Button Content="Apply" Command="{Binding ApplyTriggerCommand}" />
+                </StackPanel>
             </Border>
-        </Grid>
 
+            <!-- Plot, with the advanced overlay floating over its right edge (left of the side panel) -->
+            <Grid>
+                <sp:AvaPlot x:Name="Plot" />
+
+                <Border IsVisible="{Binding IsAdvancedOpen}"
+                        Width="280"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,8,8,8"
+                        Padding="12"
+                        Background="#B31E1E24"
+                        BorderBrush="#40808080"
+                        BorderThickness="1"
+                        CornerRadius="6">
+                    <Grid>
+
+                        <!-- Trigger: advanced -->
+                        <StackPanel IsVisible="{Binding IsTriggerAdvancedOpen}" Spacing="6">
+                            <Grid ColumnDefinitions="Auto,*" Margin="0,0,28,4">
+                                <Border Width="4" Height="18" CornerRadius="2"
+                                        Background="#E5484D"
+                                        VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Grid.Column="1" Text="Trigger - advanced"
+                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <StackPanel IsEnabled="{Binding CanEditSettings}" Spacing="6">
+                                <Grid ColumnDefinitions="112,*">
+                                    <TextBlock Classes="label" Text="Record length"
+                                               ToolTip.Tip="Samples per channel (after decimation)." />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding RecordLength}"
+                                                   Minimum="1" Maximum="{Binding MaxRecordLength}"
+                                                   Increment="1024" FormatString="0" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="112,*">
+                                    <TextBlock Classes="label" Text="Decimation"
+                                               ToolTip.Tip="Every Nth sample goes to the record. 1 = every sample." />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding Decimation}"
+                                                   Minimum="1" Maximum="{Binding MaxDecimation}"
+                                                   Increment="1" FormatString="0" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="112,*">
+                                    <TextBlock Classes="label" Text="Pretrigger"
+                                               ToolTip.Tip="Samples kept from before the trigger. You can also drag the grey line on the plot." />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding Pretrigger}"
+                                                   Minimum="0" Maximum="{Binding MaxPretrigger}"
+                                                   Increment="256" FormatString="0" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="112,*">
+                                    <TextBlock Classes="label" Text="Hysteresis"
+                                               ToolTip.Tip="ADC codes. Set to 3 automatically on connect." />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding TriggerHysteresis}"
+                                                   Minimum="0" Maximum="255" Increment="1"
+                                                   FormatString="0" />
+                                </Grid>
+                            </StackPanel>
+
+                            <Grid ColumnDefinitions="112,*">
+                                <TextBlock Classes="label" Text="Holdoff" />
+                                <NumericUpDown Grid.Column="1" IsEnabled="False"
+                                               ToolTip.Tip="Available when the firmware supports it"
+                                               ToolTip.ShowOnDisabled="True" />
+                            </Grid>
+
+                            <TextBlock Text="{Binding SampleRateText}" Opacity="0.7" Margin="0,4,0,0" />
+                            <TextBlock Text="{Binding RecordDurationText}" Opacity="0.7" />
+                        </StackPanel>
+
+                        <!-- Channels: advanced -->
+                        <Panel IsVisible="{Binding IsChannel1AdvancedOpen}">
+                            <views:ChannelAdvanced DataContext="{Binding Channel1}" />
+                        </Panel>
+                        <Panel IsVisible="{Binding IsChannel2AdvancedOpen}">
+                            <views:ChannelAdvanced DataContext="{Binding Channel2}" />
+                        </Panel>
+
+                        <!-- Close -->
+                        <Button Content="×"
+                                FontSize="16"
+                                Padding="8,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Command="{Binding CloseAdvancedCommand}" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+        </DockPanel>
     </DockPanel>
 </Window>

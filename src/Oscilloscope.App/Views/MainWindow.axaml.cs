@@ -22,15 +22,23 @@ public partial class MainWindow : Window
     private static readonly Cursor PretriggerCursor = new(StandardCursorType.SizeWestEast);
 
     private enum DragTarget { None, TriggerLevel, Pretrigger }
-    private DebugWindow? _debugWindow;
+
+    /// <summary>Unit of the time axis: values on the axis are seconds multiplied by <see cref="Scale"/>.</summary>
+    private readonly record struct TimeUnit(double Scale, string Suffix);
 
     private MainViewModel? _viewModel;
+    private DebugWindow? _debugWindow;
+
+    // Time axis: the unit follows the length of the record.
+    private double _periodSeconds = 10e-9;
+    private TimeUnit _unit = new(1e9, "ns");
+    private double _periodUnits = 10; // time between samples, in axis units
     private uint _lastSamples;
 
     private ScottPlot.Plottables.HorizontalLine? _triggerLine;
     private ScottPlot.Plottables.VerticalLine? _pretriggerLine;
     private double? _triggerLevelShown;
-    private double? _pretriggerShown;
+    private double? _pretriggerShown; // axis units
     private DragTarget _drag = DragTarget.None;
 
     public MainWindow()
@@ -38,7 +46,6 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         ApplyDarkTheme();
-        
         ApplyLimits(sampleCount: 0);
         Plot.Refresh();
 
@@ -59,6 +66,12 @@ public partial class MainWindow : Window
         plot.DataBackground.Color = ScottPlot.Color.FromHex("#101014");
         plot.Axes.Color(ScottPlot.Color.FromHex("#D0D0D0"));
         plot.Grid.MajorLineColor = ScottPlot.Color.FromHex("#2E2E36");
+
+        // Time on the bottom axis: values carry the unit.
+        plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic
+        {
+            LabelFormatter = value => $"{value:0.###} {_unit.Suffix}",
+        };
     }
 
     private void OnDebugClick(object? sender, RoutedEventArgs e)
@@ -80,16 +93,24 @@ public partial class MainWindow : Window
             _debugWindow = null;
         };
         _debugWindow.Show(this);
-    } 
-    
+    }
+
+    private static TimeUnit ChooseUnit(double spanSeconds) => spanSeconds switch
+    {
+        >= 1 => new TimeUnit(1, "s"),
+        >= 1e-3 => new TimeUnit(1e3, "ms"),
+        >= 1e-6 => new TimeUnit(1e6, "µs"),
+        _ => new TimeUnit(1e9, "ns"),
+    };
+
     /// <summary>
-    /// Sets the view to the whole record and restricts zoom and pan to the sample range
-    /// (X: 0..N-1, Y: 0..255). Called only when the record length changes,
-    /// so the user's zoom is kept in Run mode.
+    /// Sets the view to the whole record and restricts zoom and pan to the record
+    /// (X: 0..last sample in axis units, Y: 0..255). Called only when the record length,
+    /// the sample period or the unit changes, so the user's zoom is kept in Run mode.
     /// </summary>
     private void ApplyLimits(uint sampleCount)
     {
-        double right = sampleCount > 1 ? sampleCount - 1 : 1;
+        double right = sampleCount > 1 ? (sampleCount - 1) * _periodUnits : 1;
         var limits = new ScottPlot.AxisLimits(left: 0, right: right, bottom: 0, top: 255);
 
         var axes = Plot.Plot.Axes;
@@ -149,6 +170,7 @@ public partial class MainWindow : Window
         _triggerLine.LinePattern = ScottPlot.LinePattern.Dashed;
     }
 
+    /// <summary>Draws the pretrigger line at the given position in axis units (time).</summary>
     private void SetPretriggerLine(double? position)
     {
         if (_pretriggerLine is not null)
@@ -173,13 +195,19 @@ public partial class MainWindow : Window
     /// </summary>
     private void UpdateMarkers()
     {
-        double? level = _drag == DragTarget.TriggerLevel
-            ? _triggerLevelShown
-            : _viewModel?.AppliedTriggerLevel;
+        double? level;
+        if (_drag == DragTarget.TriggerLevel)
+            level = _triggerLevelShown;
+        else
+            level = _viewModel?.AppliedTriggerLevel;
 
-        double? pretrigger = _drag == DragTarget.Pretrigger
-            ? _pretriggerShown
-            : _viewModel?.AppliedPretrigger;
+        double? pretrigger;
+        if (_drag == DragTarget.Pretrigger)
+            pretrigger = _pretriggerShown;
+        else if (_viewModel?.AppliedPretrigger is { } samples)
+            pretrigger = samples * _periodUnits;
+        else
+            pretrigger = null;
 
         SetTriggerLine(level);
         SetPretriggerLine(pretrigger);
@@ -269,11 +297,12 @@ public partial class MainWindow : Window
         }
         else
         {
-            double max = _viewModel is null ? 0 : (double)_viewModel.MaxPretrigger;
-            double position = Math.Round(Math.Clamp(coordinates.X, 0, max));
-            SetPretriggerLine(position);
+            // The X axis is time: convert it to a whole number of samples.
+            double maxSamples = _viewModel is null ? 0 : (double)_viewModel.MaxPretrigger;
+            double samples = Math.Round(Math.Clamp(coordinates.X / _periodUnits, 0, maxSamples));
+            SetPretriggerLine(samples * _periodUnits);
             if (_viewModel is not null)
-                _viewModel.Pretrigger = (decimal)position; // the numeric field follows live
+                _viewModel.Pretrigger = (decimal)samples; // the numeric field follows live
         }
 
         Plot.Refresh();
@@ -308,8 +337,21 @@ public partial class MainWindow : Window
 
     // --- Records -------------------------------------------------------
 
-    private void OnRecordReceived(AcquisitionRecord record)
+    private void OnRecordReceived(AcquisitionRecord record, double samplePeriod)
     {
+        uint samples = record.Header.SamplesPerChannel;
+        var unit = ChooseUnit(samples * samplePeriod);
+        double periodUnits = samplePeriod * unit.Scale;
+
+        bool axisChanged = samples != _lastSamples
+                           || samplePeriod != _periodSeconds
+                           || unit != _unit;
+
+        _lastSamples = samples;
+        _periodSeconds = samplePeriod;
+        _unit = unit;
+        _periodUnits = periodUnits;
+
         Plot.Plot.Clear();
         _triggerLine = null;
         _pretriggerLine = null;
@@ -320,17 +362,14 @@ public partial class MainWindow : Window
                 continue;
 
             double[] ys = Array.ConvertAll(record.ExtractChannel(channel), b => (double)b);
-            var signal = Plot.Plot.Add.Signal(ys);
+            var signal = Plot.Plot.Add.Signal(ys, periodUnits);
             signal.Color = channel == 1 ? Channel1Color : Channel2Color;
         }
 
         UpdateMarkers();
 
-        if (record.Header.SamplesPerChannel != _lastSamples)
-        {
-            _lastSamples = record.Header.SamplesPerChannel;
-            ApplyLimits(_lastSamples);
-        }
+        if (axisChanged)
+            ApplyLimits(samples);
 
         Plot.Refresh();
     }

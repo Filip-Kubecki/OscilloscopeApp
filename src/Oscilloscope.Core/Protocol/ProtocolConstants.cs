@@ -58,6 +58,7 @@ public static class Registers
     public const byte CommandArm = 0x11;
     public const byte CommandStop = 0x12;
     public const byte CommandForceTrigger = 0x13;
+    public const byte CommandClearFlags = 0x14;
     public const byte CommandClearCounters = 0x15;
     public const byte CommandResetConfig = 0x16;
     public const byte CommandReadRecord = 0x17;
@@ -91,6 +92,14 @@ public static class Registers
     public const byte AcquisitionWritePointer = 0xA1;
     public const byte AcquisitionTriggerPointer = 0xA2;
     public const byte AcquisitionRecordId = 0xA4;
+
+    // Channel status (read-only): what the driver actually sent to the PGA and the DAC, and flags
+    public const byte Channel1AppliedGain = 0xB0;
+    public const byte Channel1AppliedOffset = 0xB1;
+    public const byte Channel1Flags = 0xB2;
+    public const byte Channel2AppliedGain = 0xC0;
+    public const byte Channel2AppliedOffset = 0xC1;
+    public const byte Channel2Flags = 0xC2;
 
     // Debug
     public const byte DebugScratch0 = 0xF0;

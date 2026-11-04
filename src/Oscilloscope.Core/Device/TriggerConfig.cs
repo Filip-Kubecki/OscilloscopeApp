@@ -27,13 +27,14 @@ public readonly record struct ChannelConfig(uint Gain, uint Offset);
 
 /// <summary>
 /// Everything the application configures: trigger, pretrigger, record length
-/// (samples per channel), the channel mask (bit 0 = channel 1, bit 1 = channel 2)
-/// and the analog settings of both channels.
+/// (samples per channel, after decimation), decimation (every Nth sample goes to the record),
+/// the channel mask (bit 0 = channel 1, bit 1 = channel 2) and the analog settings of both channels.
 /// </summary>
 public readonly record struct CaptureConfig(
     TriggerConfig Trigger,
     uint Pretrigger,
     uint RecordLength,
+    uint Decimation,
     uint ChannelMask,
     ChannelConfig Channel1,
     ChannelConfig Channel2);
@@ -69,6 +70,7 @@ public static class TriggerExtensions
         var trigger = await device.ReadTriggerConfigAsync(ct);
         uint pretrigger = await device.ReadRegisterAsync(Registers.AcquisitionPretrigger, ct);
         uint length = await device.ReadRegisterAsync(Registers.AcquisitionRecordLength, ct);
+        uint decimation = await device.ReadRegisterAsync(Registers.AcquisitionDecimation, ct);
         uint mask = await device.ReadRegisterAsync(Registers.AcquisitionChannelMask, ct);
 
         if (mask is 0 or > 3)
@@ -81,7 +83,7 @@ public static class TriggerExtensions
             await device.ReadRegisterAsync(Registers.Channel2Gain, ct),
             await device.ReadRegisterAsync(Registers.Channel2Offset, ct));
 
-        return new CaptureConfig(trigger, pretrigger, length, mask, ch1, ch2);
+        return new CaptureConfig(trigger, pretrigger, length, decimation, mask, ch1, ch2);
     }
 
     /// <summary>Pending record length in samples per channel.</summary>
@@ -102,8 +104,8 @@ public static class TriggerExtensions
     /// (COMMIT is accepted only there).
     /// <para>
     /// Record length and channel mask are checked against each other when written
-    /// (docs/protocol.md, section 3.1): moving to mask 03 needs the length to be at most 65536
-    /// first, a length above 65536 needs a single-channel mask first.
+    /// (docs/protocol.md, section 3.1): moving to mask 03 needs the length to be at most 32768
+    /// first, a length above 32768 needs a single-channel mask first.
     /// </para>
     /// </summary>
     public static async Task ApplyCaptureConfigAsync(
@@ -121,6 +123,7 @@ public static class TriggerExtensions
         }
 
         await device.WriteRegisterAsync(Registers.AcquisitionPretrigger, config.Pretrigger, ct);
+        await device.WriteRegisterAsync(Registers.AcquisitionDecimation, config.Decimation, ct);
         await WriteTriggerRegistersAsync(device, config.Trigger, ct);
 
         await device.WriteRegisterAsync(Registers.Channel1Gain, config.Channel1.Gain, ct);

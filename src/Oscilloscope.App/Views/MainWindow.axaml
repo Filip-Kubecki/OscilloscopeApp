@@ -290,15 +290,16 @@
 
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <TextBlock Classes="label" Text="Mode" />
-                        <ComboBox SelectedIndex="0" IsEnabled="False" Width="104"
-                                  ToolTip.Tip="Available when the firmware supports it"
-                                  ToolTip.ShowOnDisabled="True">
-                            <ComboBoxItem Content="Normal" />
-                            <ComboBoxItem Content="Auto" />
-                            <ComboBoxItem Content="Single" />
+                        <ComboBox SelectedIndex="{Binding AcquisitionModeIndex}" Width="104">
+                            <ComboBoxItem Content="Auto"
+                                          ToolTip.Tip="Forces a trigger after 0.5 s without one, so the display keeps updating." />
+                            <ComboBoxItem Content="Normal"
+                                          ToolTip.Tip="Waits for a trigger. Run repeats the acquisition." />
+                            <ComboBoxItem Content="Single"
+                                          ToolTip.Tip="One record, then the device stops. Run does a single acquisition. Device default." />
                         </ComboBox>
                     </StackPanel>
-
+                    
                     <Button Content="Apply" Command="{Binding ApplyTriggerCommand}" />
                 </StackPanel>
             </Border>

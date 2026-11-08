@@ -64,6 +64,7 @@ public static class Registers
     public const byte CommandReadRecord = 0x17;
 
     // Acquisition configuration
+    public const byte AcquisitionMode = 0x30;
     public const byte AcquisitionRecordLength = 0x31;
     public const byte AcquisitionPretrigger = 0x32;
     public const byte AcquisitionDecimation = 0x33;

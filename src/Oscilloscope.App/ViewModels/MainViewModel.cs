@@ -34,6 +34,9 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     // True while the channel checkboxes are set from the device (no "last channel" check then).
     private bool _updatingChannels;
 
+    // True while the settings are being shown from the device (a mode set then is not applied again).
+    private bool _showingConfig;
+
     /// <summary>The device refused a configuration. The message is meant for the status bar.</summary>
     private sealed class ConfigRejectedException(string message) : Exception(message);
 
@@ -212,6 +215,21 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial decimal TriggerHysteresis { get; set; } = DefaultHysteresis;
 
+    /// <summary>Index into the mode list, equal to the register value: 0 = auto, 1 = normal, 2 = single.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TriggerSummary))]
+    public partial int AcquisitionModeIndex { get; set; } = (int)AcquisitionMode.Single;
+
+    // A mode picked by the user takes effect at once, like a mode button on a scope.
+    // This applies the whole panel, the same way as dragging the trigger line.
+    partial void OnAcquisitionModeIndexChanged(int value)
+    {
+        if (_showingConfig || !CanEditSettings)
+            return;
+
+        _ = ApplyTriggerAsync();
+    }
+
     /// <summary>Samples kept from before the trigger, per channel.</summary>
     [ObservableProperty]
     public partial decimal Pretrigger { get; set; }
@@ -255,9 +273,16 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 1 => "falling",
                 _ => "both edges",
             };
-            return $"CH{TriggerSourceIndex + 1}, {edge}, level {TriggerLevel:0}";
+            return $"CH{TriggerSourceIndex + 1}, {edge}, level {TriggerLevel:0}, {ModeName(AcquisitionModeIndex)}";
         }
     }
+
+    private static string ModeName(int index) => index switch
+    {
+        0 => "auto",
+        1 => "normal",
+        _ => "single",
+    };
 
     /// <summary>65536 samples with one channel enabled, 32768 per channel with both.</summary>
     public decimal MaxRecordLength =>
@@ -477,6 +502,10 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         Pretrigger = config.Pretrigger;
         Decimation = Math.Max(1u, config.Decimation);
 
+        _showingConfig = true;
+        AcquisitionModeIndex = (int)config.Mode;
+        _showingConfig = false;
+
         TriggerSourceIndex = (int)t.Source;
         TriggerEdgeIndex = (int)t.Edge;
         TriggerLevel = t.Level;
@@ -500,6 +529,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         uint length = (uint)Math.Clamp(RecordLength, 1m, MaxRecordLength);
         uint pretrigger = (uint)Math.Clamp(Pretrigger, 0m, (decimal)(length - 1));
         uint decimation = (uint)Math.Clamp(Decimation, 1m, MaxDecimation);
+        var mode = (AcquisitionMode)Math.Clamp(AcquisitionModeIndex, 0, 2);
         uint mask = (Channel1.IsEnabled ? 0x01u : 0u) | (Channel2.IsEnabled ? 0x02u : 0u);
 
         var trigger = new TriggerConfig(
@@ -509,7 +539,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             (byte)Math.Clamp(TriggerHysteresis, 0, 255));
 
         config = new CaptureConfig(
-            trigger, pretrigger, length, decimation, mask,
+            trigger, pretrigger, length, decimation, mode, mask,
             ToChannelConfig(Channel1), ToChannelConfig(Channel2));
         return true;
     }
@@ -604,7 +634,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
             var t = c.Trigger;
             return $"Rejected values: state={state}, src={t.Source}, edge={t.Edge}, level={t.Level}, " +
                    $"hyst={t.Hysteresis}, len={c.RecordLength}, pre={c.Pretrigger}, dec={c.Decimation}, " +
-                   $"mask=0x{c.ChannelMask:X2}, " +
+                   $"mode={c.Mode}, mask=0x{c.ChannelMask:X2}, " +
                    $"ch1 gain={c.Channel1.Gain} offset={c.Channel1.Offset}, " +
                    $"ch2 gain={c.Channel2.Gain} offset={c.Channel2.Offset}.";
         }
@@ -670,6 +700,32 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>In single mode the device stops after one record, so Run behaves like Single.</summary>
+    private bool OneShotMode => _lastApplied?.Mode == AcquisitionMode.Single;
+
+    private string WaitingText() => _lastApplied?.Mode == AcquisitionMode.Auto
+        ? "Waiting for trigger (auto after 0.5 s) ..."
+        : "Waiting for trigger ...";
+
+    /// <summary>
+    /// In auto and normal mode the device arms itself again after a record is read, so ending
+    /// an acquisition takes an explicit STOP. In single mode the device stops on its own.
+    /// </summary>
+    private async Task StopDeviceAfterRunAsync(DeviceClient device)
+    {
+        if (_lastApplied is { Mode: AcquisitionMode.Single } || !device.IsConnected)
+            return;
+
+        try
+        {
+            await device.SendCommandAsync(Registers.CommandStop);
+        }
+        catch
+        {
+            // The next exchange reports a lost connection.
+        }
+    }
+
     private async Task RunAcquisitionAsync(bool continuous)
     {
         var device = _device;
@@ -682,7 +738,7 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         {
             do
             {
-                Status = "Waiting for trigger ...";
+                Status = WaitingText();
                 var record = await device.AcquireTriggeredAsync(
                     token, HasPendingConfig, ApplyPendingConfigAsync);
                 if (record is null)
@@ -699,13 +755,15 @@ public partial class MainViewModel : ViewModelBase, IDisposable
                 string duration = FormatDuration(h.SamplesPerChannel * samplePeriod);
                 RecordInfo = $"Record #{h.RecordId}, {h.SamplesPerChannel} samples/channel, {duration}";
                 RecordReceived?.Invoke(record, samplePeriod);
-                Status = continuous ? "Continuous acquisition." : "Done.";
+
+                bool again = continuous && !OneShotMode;
+                Status = again ? "Continuous acquisition." : "Done.";
 
                 // Limit the refresh rate to about 30 frames per second.
-                if (continuous)
+                if (again)
                     await Task.Delay(30, token);
             }
-            while (continuous && !token.IsCancellationRequested);
+            while (continuous && !OneShotMode && !token.IsCancellationRequested);
 
             if (token.IsCancellationRequested)
                 Status = "Stopped.";
@@ -720,6 +778,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
         }
         finally
         {
+            await StopDeviceAfterRunAsync(device);
+
             IsRunning = false;
             _acquisitionCts?.Dispose();
             _acquisitionCts = null;
@@ -727,8 +787,8 @@ public partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>Lets other windows (calibration) report an error from the shared device connection.</summary>
-    public void ReportDeviceError(Exception ex) => HandleError(ex); 
-    
+    public void ReportDeviceError(Exception ex) => HandleError(ex);
+
     private void HandleError(Exception ex)
     {
         Status = ex switch

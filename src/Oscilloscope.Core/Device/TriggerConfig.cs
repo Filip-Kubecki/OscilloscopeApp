@@ -15,6 +15,18 @@ public enum TriggerEdge : uint
     Both = 2,
 }
 
+/// <summary>
+/// Acquisition mode (register 0x30, active after COMMIT, the device defaults to Single).
+/// Auto: forces a trigger after 0.5 s without one. Normal: arms again after the record is read.
+/// Single: stops after one record.
+/// </summary>
+public enum AcquisitionMode : uint
+{
+    Auto = 0,
+    Normal = 1,
+    Single = 2,
+}
+
 /// <summary>Trigger settings. Level and hysteresis are in ADC codes (0..255).</summary>
 public readonly record struct TriggerConfig(
     TriggerSource Source,
@@ -28,13 +40,15 @@ public readonly record struct ChannelConfig(uint Gain, uint Offset);
 /// <summary>
 /// Everything the application configures: trigger, pretrigger, record length
 /// (samples per channel, after decimation), decimation (every Nth sample goes to the record),
-/// the channel mask (bit 0 = channel 1, bit 1 = channel 2) and the analog settings of both channels.
+/// the acquisition mode, the channel mask (bit 0 = channel 1, bit 1 = channel 2)
+/// and the analog settings of both channels.
 /// </summary>
 public readonly record struct CaptureConfig(
     TriggerConfig Trigger,
     uint Pretrigger,
     uint RecordLength,
     uint Decimation,
+    AcquisitionMode Mode,
     uint ChannelMask,
     ChannelConfig Channel1,
     ChannelConfig Channel2);
@@ -71,8 +85,11 @@ public static class TriggerExtensions
         uint pretrigger = await device.ReadRegisterAsync(Registers.AcquisitionPretrigger, ct);
         uint length = await device.ReadRegisterAsync(Registers.AcquisitionRecordLength, ct);
         uint decimation = await device.ReadRegisterAsync(Registers.AcquisitionDecimation, ct);
+        uint mode = await device.ReadRegisterAsync(Registers.AcquisitionMode, ct);
         uint mask = await device.ReadRegisterAsync(Registers.AcquisitionChannelMask, ct);
 
+        if (!Enum.IsDefined(typeof(AcquisitionMode), mode))
+            throw new ProtocolException($"Unknown ACQUISITION_MODE value: {mode}.");
         if (mask is 0 or > 3)
             throw new ProtocolException($"Unexpected ACQUISITION_CHANNEL_MASK value: 0x{mask:X}.");
 
@@ -83,7 +100,7 @@ public static class TriggerExtensions
             await device.ReadRegisterAsync(Registers.Channel2Gain, ct),
             await device.ReadRegisterAsync(Registers.Channel2Offset, ct));
 
-        return new CaptureConfig(trigger, pretrigger, length, decimation, mask, ch1, ch2);
+        return new CaptureConfig(trigger, pretrigger, length, decimation, (AcquisitionMode)mode, mask, ch1, ch2);
     }
 
     /// <summary>Pending record length in samples per channel.</summary>
@@ -124,6 +141,7 @@ public static class TriggerExtensions
 
         await device.WriteRegisterAsync(Registers.AcquisitionPretrigger, config.Pretrigger, ct);
         await device.WriteRegisterAsync(Registers.AcquisitionDecimation, config.Decimation, ct);
+        await device.WriteRegisterAsync(Registers.AcquisitionMode, (uint)config.Mode, ct);
         await WriteTriggerRegistersAsync(device, config.Trigger, ct);
 
         await device.WriteRegisterAsync(Registers.Channel1Gain, config.Channel1.Gain, ct);

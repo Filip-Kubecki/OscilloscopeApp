@@ -78,8 +78,9 @@ public static class GainSweep
             Pretrigger = 0,
             RecordLength = length,
             Decimation = 1,
+            Mode = AcquisitionMode.Single,
             ChannelMask = mask,
-        };
+        }; 
     }
 
     /// <summary>Null when the sweep was stopped before the point was complete.</summary>

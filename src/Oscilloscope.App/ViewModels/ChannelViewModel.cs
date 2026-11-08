@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Oscilloscope.Core.Device;
@@ -37,9 +39,44 @@ public partial class ChannelViewModel(
     [ObservableProperty]
     public partial bool CanEdit { get; set; }
 
-    /// <summary>PGA gain word, raw register value.</summary>
+    // --- Gain: only the presets can be chosen --------------------------
+
+    /// <summary>The gains offered in the combo box (see <see cref="GainPresets"/>).</summary>
+    public IReadOnlyList<string> PresetLabels { get; } = GainPresets.All.Select(p => p.Label).ToArray();
+
+    /// <summary>Index of the selected preset.</summary>
     [ObservableProperty]
-    public partial decimal Gain { get; set; }
+    public partial int GainPresetIndex { get; set; }
+
+    /// <summary>The PGA gain word that goes to the device. Always the word of a preset.</summary>
+    [ObservableProperty]
+    public partial decimal Gain { get; set; } = GainPresets.All[0].Word;
+
+    // The word was set (e.g. read from the device): show the nearest preset and use its word.
+    partial void OnGainChanged(decimal value)
+    {
+        uint word = (uint)Math.Clamp(value, 0m, 255m);
+        int index = GainPresets.NearestIndex(word);
+        uint snapped = GainPresets.All[index].Word;
+
+        if (word != snapped)
+        {
+            Gain = snapped;
+            return;
+        }
+
+        if (GainPresetIndex != index)
+            GainPresetIndex = index;
+    }
+
+    // The user picked a preset: its word becomes the gain.
+    partial void OnGainPresetIndexChanged(int value)
+    {
+        if (value < 0 || value >= GainPresets.All.Count)
+            return;
+
+        Gain = GainPresets.All[value].Word;
+    }
 
     /// <summary>DAC code of the input offset, raw register value.</summary>
     [ObservableProperty]
@@ -57,7 +94,7 @@ public partial class ChannelViewModel(
     public partial ChannelStatus? AppliedStatus { get; set; }
 
     public string AppliedGainText => AppliedStatus is { } s
-        ? $"Applied gain: {s.AppliedGain} (0x{s.AppliedGain:X2})"
+        ? $"Applied gain: word {s.AppliedGain} (0x{s.AppliedGain:X2}), {Ad8370.NominalVoltageGain(s.AppliedGain):0.###} V/V"
         : "Applied gain: -";
 
     public string AppliedOffsetText => AppliedStatus is { } s
@@ -82,14 +119,19 @@ public partial class ChannelViewModel(
     /// <summary>Raised when the user clicks the Advanced button of the block.</summary>
     public event Action<ChannelViewModel>? AdvancedRequested;
 
-    /// <summary>Raised when the user asks for the calibration window of this channel.</summary>
+    /// <summary>Raised when the user asks for the offset vs gain sweep window of this channel.</summary>
     public event Action<ChannelViewModel>? CalibrationRequested;
+
+    /// <summary>Raised when the user asks for the voltage calibration window of this channel.</summary>
+    public event Action<ChannelViewModel>? VoltageCalibrationRequested;
 
     public void RequestSelect() => SelectRequested?.Invoke(this);
 
     public void RequestAdvanced() => AdvancedRequested?.Invoke(this);
 
     public void RequestCalibration() => CalibrationRequested?.Invoke(this);
+
+    public void RequestVoltageCalibration() => VoltageCalibrationRequested?.Invoke(this);
 
     partial void OnIsEnabledChanged(bool value) => enabledChanged(this);
 }

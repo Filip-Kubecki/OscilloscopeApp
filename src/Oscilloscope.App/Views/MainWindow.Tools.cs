@@ -7,11 +7,12 @@ using Oscilloscope.Core.Protocol;
 
 namespace Oscilloscope.App.Views;
 
-/// <summary>Saving the visible samples and the calibration window, kept apart from the plot code.</summary>
+/// <summary>Saving the visible samples and the calibration windows, kept apart from the plot code.</summary>
 public partial class MainWindow
 {
     private MainViewModel? _toolsViewModel;
     private CalibrationWindow? _calibrationWindow;
+    private VoltageCalibrationWindow? _voltageWindow;
     private AcquisitionRecord? _exportRecord;
     private double _exportPeriodSeconds;
 
@@ -24,6 +25,8 @@ public partial class MainWindow
             _toolsViewModel.RecordReceived -= OnRecordForExport;
             _toolsViewModel.Channel1.CalibrationRequested -= OnCalibrationRequested;
             _toolsViewModel.Channel2.CalibrationRequested -= OnCalibrationRequested;
+            _toolsViewModel.Channel1.VoltageCalibrationRequested -= OnVoltageCalibrationRequested;
+            _toolsViewModel.Channel2.VoltageCalibrationRequested -= OnVoltageCalibrationRequested;
         }
 
         _toolsViewModel = DataContext as MainViewModel;
@@ -33,6 +36,8 @@ public partial class MainWindow
             _toolsViewModel.RecordReceived += OnRecordForExport;
             _toolsViewModel.Channel1.CalibrationRequested += OnCalibrationRequested;
             _toolsViewModel.Channel2.CalibrationRequested += OnCalibrationRequested;
+            _toolsViewModel.Channel1.VoltageCalibrationRequested += OnVoltageCalibrationRequested;
+            _toolsViewModel.Channel2.VoltageCalibrationRequested += OnVoltageCalibrationRequested;
         }
     }
 
@@ -94,5 +99,29 @@ public partial class MainWindow
             _calibrationWindow = null;
         };
         _calibrationWindow.Show(this);
+    }
+
+    private void OnVoltageCalibrationRequested(ChannelViewModel channel)
+    {
+        if (_toolsViewModel is not { } main)
+            return;
+
+        if (_voltageWindow is not null)
+        {
+            if (_voltageWindow.DataContext is VoltageCalibrationViewModel { IsMeasuring: false } open)
+                open.ChannelIndex = channel.Number - 1;
+
+            _voltageWindow.Activate();
+            return;
+        }
+
+        var viewModel = new VoltageCalibrationViewModel(main, channel.Number);
+        _voltageWindow = new VoltageCalibrationWindow { DataContext = viewModel };
+        _voltageWindow.Closed += (_, _) =>
+        {
+            viewModel.Dispose();
+            _voltageWindow = null;
+        };
+        _voltageWindow.Show(this);
     }
 }

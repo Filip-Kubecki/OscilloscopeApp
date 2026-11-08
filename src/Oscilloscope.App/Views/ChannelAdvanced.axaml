@@ -22,7 +22,7 @@
         </Grid>
 
         <TextBlock Text="Status from the device" Opacity="0.6" Margin="0,4,0,0" />
-        <TextBlock Text="{Binding AppliedGainText}" />
+        <TextBlock Text="{Binding AppliedGainText}" TextWrapping="Wrap" />
         <TextBlock Text="{Binding AppliedOffsetText}" />
         <TextBlock Text="{Binding OverrangeText}" Classes.warn="{Binding IsOverrange}" />
         <TextBlock Text="{Binding BusyText}" Opacity="0.7" />
@@ -30,11 +30,17 @@
         <TextBlock Text="Refreshed every 0.5 s while this panel is open."
                    FontSize="11" Opacity="0.5" TextWrapping="Wrap" Margin="0,4,0,0" />
 
-        <Button Content="Calibration..."
-                Click="OnCalibrationClick"
+        <Button Content="Voltage calibration..."
+                Click="OnVoltageCalibrationClick"
                 IsEnabled="{Binding CanEdit}"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Center"
                 Margin="0,8,0,0" />
+
+        <Button Content="DC offset vs gain..."
+                Click="OnCalibrationClick"
+                IsEnabled="{Binding CanEdit}"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center" />
     </StackPanel>
 </UserControl>

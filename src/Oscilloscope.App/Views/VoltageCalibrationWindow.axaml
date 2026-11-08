@@ -1,0 +1,244 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Oscilloscope.App.ViewModels"
+        xmlns:sp="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
+        x:Class="Oscilloscope.App.Views.VoltageCalibrationWindow"
+        x:DataType="vm:VoltageCalibrationViewModel"
+        RequestedThemeVariant="Dark"
+        Width="1400" Height="780"
+        Title="Calibration - ADC code vs input voltage">
+
+    <Window.Styles>
+        <Style Selector="Button">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="NumericUpDown /template/ TextBox">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Opacity" Value="0.8" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.mono">
+            <Setter Property="FontFamily" Value="Consolas, Menlo, DejaVu Sans Mono, monospace" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style Selector="TextBlock.warn">
+            <Setter Property="Foreground" Value="#F85149" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel>
+
+        <!-- Status and progress -->
+        <Border DockPanel.Dock="Bottom" Padding="8,4"
+                BorderBrush="#40808080" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,220,Auto">
+                <TextBlock Text="{Binding Status}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <ProgressBar Grid.Column="1" Minimum="0" Maximum="100"
+                             Value="{Binding ProgressPercent}"
+                             Height="8" Margin="12,0" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Classes="mono" Text="{Binding ProgressText}"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- Controls -->
+        <Border DockPanel.Dock="Top" Padding="10,8" Background="#1E1E24"
+                BorderBrush="#40808080" BorderThickness="0,0,0,1">
+            <StackPanel Spacing="6">
+
+                <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.75"
+                           Text="Put a known DC voltage on the input of the selected channel (set the generator load to 50 Ω, or measure the voltage at the input), type it below and press Measure. Repeat for several voltages, including 0 V and negative ones. Every ticked gain is measured at each voltage. A line is fitted per gain from the points that did not touch the ADC limits. The DAC offset of the channel must stay the same during the whole calibration." />
+
+                <WrapPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="12"
+                                IsEnabled="{Binding CanEdit}">
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Channel" />
+                            <ComboBox SelectedIndex="{Binding ChannelIndex}" Width="84">
+                                <ComboBoxItem Content="CH1" />
+                                <ComboBoxItem Content="CH2" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Voltage (V)" />
+                            <NumericUpDown Value="{Binding Voltage}" Minimum="-100" Maximum="100"
+                                           Increment="0.01" FormatString="0.######" Width="140"
+                                           ToolTip.Tip="DC voltage on the input, in volts. Typed with the decimal separator of your system." />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Samples" />
+                            <NumericUpDown Value="{Binding SamplesPerPoint}" Minimum="1" Maximum="65536"
+                                           Increment="1024" FormatString="0" Width="120"
+                                           ToolTip.Tip="Samples per record at each gain (single channel, up to 65536)." />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Records" />
+                            <NumericUpDown Value="{Binding RecordsPerPoint}" Minimum="1" Maximum="100"
+                                           Increment="1" FormatString="0" Width="100"
+                                           ToolTip.Tip="Records averaged at each gain." />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Settle (ms)" />
+                            <NumericUpDown Value="{Binding SettleMs}" Minimum="0" Maximum="10000"
+                                           Increment="50" FormatString="0" Width="110"
+                                           ToolTip.Tip="Pause after the gain is applied, before measuring." />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,10,6">
+                            <TextBlock Classes="label" Text="Discard" />
+                            <NumericUpDown Value="{Binding DiscardRecords}" Minimum="0" Maximum="10"
+                                           Increment="1" FormatString="0" Width="100"
+                                           ToolTip.Tip="Records acquired and thrown away after the pause, before measuring." />
+                        </StackPanel>
+                    </StackPanel>
+                </WrapPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="8" IsEnabled="{Binding CanEdit}">
+                    <TextBlock Classes="label" Text="Gains" Margin="0,0,4,0" />
+                    <ItemsControl ItemsSource="{Binding Presets}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PresetChoice">
+                                <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}"
+                                          Margin="0,0,14,0" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <WrapPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="Measure" Command="{Binding MeasureCommand}"
+                                IsEnabled="{Binding CanMeasure}" />
+                        <Button Content="Stop" Command="{Binding StopCommand}"
+                                IsEnabled="{Binding IsMeasuring}" />
+                        <Button Content="Undo last" Command="{Binding UndoLastCommand}"
+                                IsEnabled="{Binding CanUndo}" />
+                        <Button Content="Clear" Command="{Binding ClearCommand}"
+                                IsEnabled="{Binding CanEdit}" />
+                        <Button Content="Save points..." Click="OnSaveClick"
+                                IsEnabled="{Binding HasResults}" />
+                        <Button Content="Store calibration" Command="{Binding StoreCalibrationCommand}"
+                                IsEnabled="{Binding HasFits}"
+                                ToolTip.Tip="Writes the fitted lines to calibration.json in the application data folder." />
+                    </StackPanel>
+                </WrapPanel>
+
+                <TextBlock Classes="warn" FontSize="12" Text="{Binding StartBlockedText}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Tables -->
+        <Border DockPanel.Dock="Right" Width="650" Background="#1E1E24"
+                BorderBrush="#40808080" BorderThickness="1,0,0,0">
+            <Grid RowDefinitions="Auto,*" Margin="8">
+
+                <!-- Fit per gain -->
+                <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,10">
+                    <TextBlock Text="Fit per gain:  code = codes/V * U + offset" FontWeight="SemiBold" />
+
+                    <Grid ColumnDefinitions="16,44,60,66,58,64,150,46,52,44,*" Margin="0,4,0,2">
+                        <TextBlock Grid.Column="1" Classes="mono" Opacity="0.6" Text="Word" />
+                        <TextBlock Grid.Column="2" Classes="mono" Opacity="0.6" Text="Gain" />
+                        <TextBlock Grid.Column="3" Classes="mono" Opacity="0.6" Text="codes/V" />
+                        <TextBlock Grid.Column="4" Classes="mono" Opacity="0.6" Text="Offset" />
+                        <TextBlock Grid.Column="5" Classes="mono" Opacity="0.6" Text="LSB mV" />
+                        <TextBlock Grid.Column="6" Classes="mono" Opacity="0.6" Text="Range 0..255 [V]" />
+                        <TextBlock Grid.Column="7" Classes="mono" Opacity="0.6" Text="RMS" />
+                        <TextBlock Grid.Column="8" Classes="mono" Opacity="0.6" Text="k" />
+                        <TextBlock Grid.Column="9" Classes="mono" Opacity="0.6" Text="n" />
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding FitRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:FitRow">
+                                <Grid ColumnDefinitions="16,44,60,66,58,64,150,46,52,44,*">
+                                    <Border Width="8" Height="8" CornerRadius="2"
+                                            Background="{Binding Swatch}"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Classes="mono" Text="{Binding WordText}" />
+                                    <TextBlock Grid.Column="2" Classes="mono" Text="{Binding GainText}" />
+                                    <TextBlock Grid.Column="3" Classes="mono" Text="{Binding SlopeText}" />
+                                    <TextBlock Grid.Column="4" Classes="mono" Text="{Binding OffsetText}" />
+                                    <TextBlock Grid.Column="5" Classes="mono" Text="{Binding LsbText}" />
+                                    <TextBlock Grid.Column="6" Classes="mono" Text="{Binding RangeText}" />
+                                    <TextBlock Grid.Column="7" Classes="mono" Text="{Binding RmsText}" />
+                                    <TextBlock Grid.Column="8" Classes="mono" Text="{Binding KText}" />
+                                    <TextBlock Grid.Column="9" Classes="mono" Text="{Binding CountText}" />
+                                    <TextBlock Grid.Column="10" Classes="mono warn" Text="{Binding FlagText}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock FontSize="11" Opacity="0.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Text="k = measured / nominal slope (nominal assumes the 26 dB attenuator and 4 mV per code at the ADC). It should be about the same for every gain. n = points used in the fit / measured." />
+                </StackPanel>
+
+                <!-- Measured points -->
+                <DockPanel Grid.Row="1">
+                    <TextBlock DockPanel.Dock="Top" Text="Measured points" FontWeight="SemiBold" />
+
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="78,48,64,52,76,*" Margin="0,4,0,2">
+                        <TextBlock Classes="mono" Opacity="0.6" Text="Volts" />
+                        <TextBlock Grid.Column="1" Classes="mono" Opacity="0.6" Text="Word" />
+                        <TextBlock Grid.Column="2" Classes="mono" Opacity="0.6" Text="Mean" />
+                        <TextBlock Grid.Column="3" Classes="mono" Opacity="0.6" Text="Sigma" />
+                        <TextBlock Grid.Column="4" Classes="mono" Opacity="0.6" Text="Min-Max" />
+                    </Grid>
+
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding PointRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PointRow">
+                                    <Grid ColumnDefinitions="78,48,64,52,76,*">
+                                        <TextBlock Classes="mono" Text="{Binding VoltsText}" />
+                                        <TextBlock Grid.Column="1" Classes="mono" Text="{Binding WordText}" />
+                                        <TextBlock Grid.Column="2" Classes="mono" Text="{Binding MeanText}" />
+                                        <TextBlock Grid.Column="3" Classes="mono" Text="{Binding StdDevText}" />
+                                        <TextBlock Grid.Column="4" Classes="mono" Text="{Binding MinMaxText}" />
+                                        <TextBlock Grid.Column="5" Classes="mono warn" Text="{Binding FlagText}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Grid>
+        </Border>
+
+        <!-- Plot -->
+        <sp:AvaPlot x:Name="Plot" />
+
+    </DockPanel>
+</Window>

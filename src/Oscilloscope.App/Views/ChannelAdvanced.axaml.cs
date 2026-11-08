@@ -13,4 +13,7 @@ public partial class ChannelAdvanced : UserControl
 
     private void OnCalibrationClick(object? sender, RoutedEventArgs e) =>
         (DataContext as ChannelViewModel)?.RequestCalibration();
+
+    private void OnVoltageCalibrationClick(object? sender, RoutedEventArgs e) =>
+        (DataContext as ChannelViewModel)?.RequestVoltageCalibration();
 }
